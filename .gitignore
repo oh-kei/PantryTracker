@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+app/
+client/node_modules/
+client/.expo/
+backend/dist/
+backend/node_modules/

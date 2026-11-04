@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "SmartFoodTracker",
+    "slug": "smart-food-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.example.smartfoodtracker",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow SmartFoodTracker to access your camera to scan fridge contents and food items."
+        }
+      ]
+    ]
+  }
+}
