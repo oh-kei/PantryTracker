@@ -16,7 +16,9 @@
     },
     "android": {
       "package": "com.example.smartfoodtracker",
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "CAMERA"
+      ]
     },
     "plugins": [
       [
@@ -24,7 +26,8 @@
         {
           "cameraPermission": "Allow SmartFoodTracker to access your camera to scan fridge contents and food items."
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }

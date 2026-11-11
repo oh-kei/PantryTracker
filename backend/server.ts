@@ -11,6 +11,7 @@ app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.PORT || 4000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const MEALDB_BASE_URL = process.env.MEALDB_BASE_URL || 'https://www.themealdb.com/api/json/v1/1';
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
@@ -71,47 +72,145 @@ app.post('/api/scan', async (req: Request, res: Response) => {
     }
 });
 
-// Recipe recommendation engine endpoint
+interface MealDbSummary {
+    idMeal: string;
+    strMeal: string;
+    strMealThumb: string;
+}
+
+interface InventoryItem {
+    name: string;
+    urgency?: 'URGENT' | 'WARNING' | 'SAFE';
+}
+
+interface Recipe {
+    id: string;
+    title: string;
+    description: string;
+    matchPercentage: number;
+    missingIngredients: string[];
+    expiringIngredients: string[];
+    steps: string[];
+    substitutions: Record<string, string>;
+}
+
+interface MealDbMeal extends MealDbSummary {
+    strCategory: string | null;
+    strArea: string | null;
+    strInstructions: string | null;
+    [key: `strIngredient${number}`]: string | null;
+    [key: `strMeasure${number}`]: string | null;
+}
+
+const normaliseIngredient = (ingredient: string): string =>
+    ingredient
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .replace(/\b(organic|fresh|free range|free-range|whole|large|small)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const ingredientSearchTerm = (ingredient: string): string =>
+    normaliseIngredient(ingredient).split(' ').slice(0, 3).join(' ');
+
+const getMealDb = async <T>(path: string): Promise<T> => {
+    const response = await fetch(`${MEALDB_BASE_URL}${path}`);
+    if (!response.ok) {
+        throw new Error(`TheMealDB request failed with status ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+};
+
+const getMealIngredients = (meal: MealDbMeal): string[] =>
+    Array.from({ length: 20 }, (_, index) => meal[`strIngredient${index + 1}`])
+        .filter((ingredient): ingredient is string => Boolean(ingredient?.trim()))
+        .map(normaliseIngredient);
+
+const toSteps = (instructions: string | null): string[] =>
+    (instructions || '')
+        .split(/\r?\n|(?<=[.!?])\s+/)
+        .map(step => step.trim())
+        .filter(Boolean);
+
+const toRecipe = (meal: MealDbMeal, inventory: InventoryItem[]): Recipe => {
+    const mealIngredients = getMealIngredients(meal);
+    const inventoryIngredients = inventory.map(item => normaliseIngredient(item.name));
+    const matchedInventory = mealIngredients.filter(mealIngredient =>
+        inventoryIngredients.some(itemIngredient =>
+            itemIngredient === mealIngredient ||
+            itemIngredient.includes(mealIngredient) ||
+            mealIngredient.includes(itemIngredient)
+        )
+    );
+    const missingIngredients = mealIngredients.filter(mealIngredient =>
+        !inventoryIngredients.some(itemIngredient =>
+            itemIngredient === mealIngredient ||
+            itemIngredient.includes(mealIngredient) ||
+            mealIngredient.includes(itemIngredient)
+        )
+    );
+    const expiringIngredients = inventory
+        .filter(item => item.urgency === 'URGENT' || item.urgency === 'WARNING')
+        .filter(item => mealIngredients.some(mealIngredient => {
+            const inventoryIngredient = normaliseIngredient(item.name);
+            return inventoryIngredient === mealIngredient ||
+                inventoryIngredient.includes(mealIngredient) ||
+                mealIngredient.includes(inventoryIngredient);
+        }))
+        .map(item => item.name);
+
+    return {
+        id: meal.idMeal,
+        title: meal.strMeal,
+        description: [meal.strArea, meal.strCategory].filter(Boolean).join(' · ') || 'Recipe from TheMealDB',
+        matchPercentage: mealIngredients.length === 0
+            ? 0
+            : Math.round((new Set(matchedInventory).size / mealIngredients.length) * 100),
+        missingIngredients,
+        expiringIngredients,
+        steps: toSteps(meal.strInstructions),
+        substitutions: {}
+    };
+};
+
 app.post('/api/recipes/recommend', async (req: Request, res: Response) => {
     try {
-        const { inventory } = req.body;
+        const { inventory } = req.body as { inventory?: InventoryItem[] };
+        if (!Array.isArray(inventory)) {
+            return res.status(400).json({ success: false, error: 'inventory must be an array' });
+        }
 
-        // Sample recipes scored and ranked by expiring items
-        const sampleRecipes = [
-            {
-                id: "r1",
-                title: "Spinach & Avocado Green Bowl",
-                description: "Nutrient-packed bowl prioritising your expiring spinach and avocados.",
-                matchPercentage: 90,
-                missingIngredients: ["Quinoa"],
-                expiringIngredients: ["Organic Spinach", "Fresh Avocados"],
-                steps: [
-                    "Wash and dry spinach thoroughly.",
-                    "Slice ripe avocados and toss with lemon.",
-                    "Combine in bowl with cooked grains.",
-                    "Drizzle with olive oil and serve."
-                ],
-                substitutions: { "Quinoa": "Brown rice or Couscous" }
-            },
-            {
-                id: "r2",
-                title: "Creamy Spinach Omelette",
-                description: "Quick breakfast scramble using fresh eggs and spinach.",
-                matchPercentage: 100,
-                missingIngredients: [],
-                expiringIngredients: ["Organic Spinach"],
-                steps: [
-                    "Whisk eggs with salt and pepper.",
-                    "Sauté spinach until wilted in skillet.",
-                    "Pour eggs over spinach and fold when set."
-                ],
-                substitutions: { "Milk": "Water or Plant-based milk" }
-            }
-        ];
+        const searchTerms = [...new Set(
+            inventory
+                .map(item => ingredientSearchTerm(item.name))
+                .filter(Boolean)
+        )].slice(0, 8);
 
-        res.json({ success: true, recipes: sampleRecipes });
+        if (searchTerms.length === 0) {
+            return res.json({ success: true, recipes: [] });
+        }
+
+        const searchResults = await Promise.all(
+            searchTerms.map(term =>
+                getMealDb<{ meals: MealDbSummary[] | null }>(`/filter.php?i=${encodeURIComponent(term)}`)
+            )
+        );
+        const mealIds = [...new Set(
+            searchResults.flatMap(result => (result.meals || []).map(meal => meal.idMeal))
+        )].slice(0, 12);
+        const meals = await Promise.all(
+            mealIds.map(id => getMealDb<{ meals: MealDbMeal[] | null }>(`/lookup.php?i=${id}`))
+        );
+        const recipes = meals
+            .flatMap(result => result.meals || [])
+            .map(meal => toRecipe(meal, inventory))
+            .sort((a, b) => b.matchPercentage - a.matchPercentage)
+            .slice(0, 6);
+
+        res.json({ success: true, recipes });
     } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error("Recipe database error:", error);
+        res.status(502).json({ success: false, error: 'Unable to retrieve recipes from TheMealDB' });
     }
 });
 
