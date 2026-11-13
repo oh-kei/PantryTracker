@@ -5,12 +5,16 @@ import { Recipe } from '../services/api';
 
 interface RecipeScreenProps {
   recipes: Recipe[];
+  isGenerating: boolean;
+  onGenerateRecipe: () => void;
   onCookRecipe: (recipeId: string) => void;
   onBack: () => void;
 }
 
 export default function RecipeScreen({
   recipes,
+  isGenerating,
+  onGenerateRecipe,
   onCookRecipe,
   onBack
 }: RecipeScreenProps) {
@@ -27,6 +31,16 @@ export default function RecipeScreen({
         <Text style={styles.subtitle}>
           Recipes are ranked dynamically based on inventory coverage and your expiring items to minimise food waste.
         </Text>
+        <TouchableOpacity
+          style={styles.generateBtn}
+          onPress={onGenerateRecipe}
+          disabled={isGenerating}
+        >
+          <Ionicons name="sparkles-outline" size={20} color="#fff" />
+          <Text style={styles.generateBtnText}>
+            {isGenerating ? 'Generating recipe...' : 'Generate Recipe with AI'}
+          </Text>
+        </TouchableOpacity>
 
         {recipes.length === 0 ? (
           <View style={styles.center}>
@@ -99,5 +113,7 @@ const styles = StyleSheet.create({
   stepsTitle: { fontSize: 15, fontWeight: 'bold', color: '#1e293b', marginBottom: 6 },
   stepText: { fontSize: 13, color: '#475569', marginBottom: 4, lineHeight: 18 },
   cookBtn: { flexDirection: 'row', backgroundColor: '#16a34a', padding: 14, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
-  cookBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15, marginLeft: 8 }
+  cookBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15, marginLeft: 8 },
+  generateBtn: { flexDirection: 'row', backgroundColor: '#7c3aed', padding: 14, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  generateBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15, marginLeft: 8 }
 });
