@@ -29,6 +29,23 @@ export interface Recipe {
   substitutions: Record<string, string>;
 }
 
+const categoryKeywords: Record<string, string[]> = {
+  'Dairy & Eggs': ['milk', 'cheese', 'yogurt', 'yoghurt', 'butter', 'cream', 'egg'],
+  'Fruits': ['apple', 'avocado', 'banana', 'berry', 'berries', 'grape', 'lemon', 'lime', 'mango', 'orange', 'pear', 'peach', 'pineapple', 'strawberry', 'watermelon'],
+  'Vegetables': ['asparagus', 'broccoli', 'cabbage', 'carrot', 'celery', 'corn', 'cucumber', 'garlic', 'lettuce', 'mushroom', 'onion', 'pepper', 'potato', 'spinach', 'tomato', 'vegetable', 'zucchini'],
+  'Meat & Poultry': ['beef', 'chicken', 'duck', 'lamb', 'meat', 'pork', 'sausage', 'turkey'],
+  'Bakery': ['bagel', 'bread', 'bun', 'cake', 'croissant', 'muffin', 'pastry', 'tortilla'],
+  'Beverages': ['coffee', 'juice', 'soda', 'tea', 'water']
+};
+
+export const inferCategory = (name: string): string => {
+  const normalised = name.toLowerCase().trim();
+  const category = Object.entries(categoryKeywords).find(([, keywords]) =>
+    keywords.some(keyword => new RegExp(`\\b${keyword}\\b`).test(normalised))
+  );
+  return category?.[0] || 'Other';
+};
+
 const API_BASE_URL = 'http://10.0.2.2:4000/api'; // Android emulator localhost or change to backend IP
 
 export const scanImageApi = async (imageBase64: string): Promise<ScanResult[]> => {
@@ -65,7 +82,7 @@ export const fetchRecommendationsApi = async (inventory: FoodItem[]): Promise<Re
     if (data.success && data.recipes) {
       return data.recipes;
     }
-    throw new Error('Failed to fetch recommendations');
+    throw new Error(data.error || 'Failed to fetch recommendations');
   } catch (error) {
     console.log('Backend offline, using local mock recommendations:', error);
     return [
@@ -100,4 +117,17 @@ export const fetchRecommendationsApi = async (inventory: FoodItem[]): Promise<Re
       }
     ];
   }
+};
+
+export const generateRecipeApi = async (inventory: FoodItem[]): Promise<Recipe> => {
+  const response = await fetch(`${API_BASE_URL}/recipes/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inventory })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success || !data.recipe) {
+    throw new Error(data.error || `Failed to generate recipe (${response.status})`);
+  }
+  return data.recipe;
 };

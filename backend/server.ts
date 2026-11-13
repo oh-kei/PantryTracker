@@ -12,6 +12,8 @@ app.use(express.json({ limit: '10mb' }));
 const PORT = process.env.PORT || 4000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MEALDB_BASE_URL = process.env.MEALDB_BASE_URL || 'https://www.themealdb.com/api/json/v1/1';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'baidu/ernie-5.5-flash-preview:free';
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
@@ -172,6 +174,104 @@ const toRecipe = (meal: MealDbMeal, inventory: InventoryItem[]): Recipe => {
         substitutions: {}
     };
 };
+
+const parseGeneratedRecipe = (content: string): Recipe => {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+        throw new Error('Recipe generator returned invalid JSON');
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as Partial<Recipe>;
+    if (
+        typeof parsed.title !== 'string' ||
+        typeof parsed.description !== 'string' ||
+        !Array.isArray(parsed.steps) ||
+        !Array.isArray(parsed.missingIngredients) ||
+        !Array.isArray(parsed.expiringIngredients)
+    ) {
+        throw new Error('Recipe generator returned an incomplete recipe');
+    }
+
+    return {
+        id: `generated_${Date.now()}`,
+        title: parsed.title,
+        description: parsed.description,
+        matchPercentage: typeof parsed.matchPercentage === 'number'
+            ? Math.max(0, Math.min(100, Math.round(parsed.matchPercentage)))
+            : 0,
+        missingIngredients: parsed.missingIngredients.filter((item): item is string => typeof item === 'string'),
+        expiringIngredients: parsed.expiringIngredients.filter((item): item is string => typeof item === 'string'),
+        steps: parsed.steps.filter((item): item is string => typeof item === 'string'),
+        substitutions: parsed.substitutions && typeof parsed.substitutions === 'object'
+            ? parsed.substitutions
+            : {}
+    };
+};
+
+app.post('/api/recipes/generate', async (req: Request, res: Response) => {
+    try {
+        const { inventory } = req.body as { inventory?: InventoryItem[] };
+        if (!Array.isArray(inventory)) {
+            return res.status(400).json({ success: false, error: 'inventory must be an array' });
+        }
+        if (!OPENROUTER_API_KEY) {
+            return res.status(503).json({ success: false, error: 'Recipe generation is not configured' });
+        }
+
+        const inventorySummary = inventory.map(item => ({
+            name: item.name,
+            urgency: item.urgency || 'SAFE'
+        }));
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'http://localhost:4000',
+                'X-Title': 'SmartFoodTracker'
+            },
+            body: JSON.stringify({
+                model: OPENROUTER_MODEL,
+                temperature: 0.3,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You generate practical recipes that reduce food waste. Return only valid JSON with fields: title, description, matchPercentage (0-100), missingIngredients (string array), expiringIngredients (string array), steps (string array), substitutions (object mapping ingredient to replacement). Do not invent inventory items.'
+                    },
+                    {
+                        role: 'user',
+                        content: `Create one recipe using this inventory. Prioritise URGENT and WARNING items. Inventory JSON: ${JSON.stringify(inventorySummary)}`
+                    }
+                ]
+            })
+        });
+        if (!response.ok) {
+            const upstreamBody = await response.text();
+            let upstreamMessage = `status ${response.status}`;
+            try {
+                const parsed = JSON.parse(upstreamBody) as { error?: { message?: string } };
+                if (parsed.error?.message) upstreamMessage = parsed.error.message;
+            } catch {
+                // Keep the response generic if OpenRouter does not return JSON.
+            }
+            throw new Error(`OpenRouter request failed: ${upstreamMessage}`);
+        }
+
+        const data = await response.json() as {
+            choices?: Array<{ message?: { content?: string } }>;
+        };
+        const content = data.choices?.[0]?.message?.content;
+        if (!content) {
+            throw new Error('OpenRouter returned no recipe');
+        }
+
+        res.json({ success: true, recipe: parseGeneratedRecipe(content) });
+    } catch (error: any) {
+        console.error("Recipe generation error:", error);
+        const message = error instanceof Error ? error.message : 'Unknown recipe generation error';
+        res.status(502).json({ success: false, error: message });
+    }
+});
 
 app.post('/api/recipes/recommend', async (req: Request, res: Response) => {
     try {

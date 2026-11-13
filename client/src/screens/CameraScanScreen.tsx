@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { inferCategory } from '../services/api';
 
 interface CameraScanScreenProps {
   isLoading: boolean;
@@ -17,7 +18,7 @@ export default function CameraScanScreen({
 }: CameraScanScreenProps) {
   const [showManualModal, setShowManualModal] = useState(false);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Vegetables');
+  const [category, setCategory] = useState('Other');
   const [quantity, setQuantity] = useState('1 unit');
   const [days, setDays] = useState('7');
 
@@ -70,7 +71,16 @@ export default function CameraScanScreen({
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Item Manually</Text>
 
-            <TextInput style={styles.input} placeholder="Food Item Name" placeholderTextColor="#94a3b8" value={name} onChangeText={setName} />
+            <TextInput
+              style={styles.input}
+              placeholder="Food Item Name"
+              placeholderTextColor="#94a3b8"
+              value={name}
+              onChangeText={value => {
+                setName(value);
+                setCategory(inferCategory(value));
+              }}
+            />
             <TextInput style={styles.input} placeholder="Category (e.g., Vegetables)" placeholderTextColor="#94a3b8" value={category} onChangeText={setCategory} />
             <TextInput style={styles.input} placeholder="Quantity (e.g., 2 units)" placeholderTextColor="#94a3b8" value={quantity} onChangeText={setQuantity} />
             <TextInput style={styles.input} placeholder="Shelf life in days (e.g., 7)" placeholderTextColor="#94a3b8" keyboardType="numeric" value={days} onChangeText={setDays} />

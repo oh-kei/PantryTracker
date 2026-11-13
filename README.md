@@ -63,6 +63,8 @@ SmartFoodTracker is an intelligent kitchen management and recipe planning applic
    ```env
    PORT=4000
    GEMINI_API_KEY=your_gemini_api_key_here
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   OPENROUTER_MODEL=baidu/ernie-5.5-flash-preview:free
    ```
 4. Start the development server:
    ```bash
