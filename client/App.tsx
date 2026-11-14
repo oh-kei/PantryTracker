@@ -115,7 +115,7 @@ export default function App() {
     setInventory([...inventory, newItem]);
   };
 
-  const handleEditItem = (id: string, name: string, category: string, quantity: string, days: number) => {
+  const handleEditItem = (id: string, name: string, category: string, storage: FoodItem['storageLocation'], quantity: string, days: number) => {
     const today = new Date();
     const expiry = new Date(today);
     expiry.setDate(today.getDate() + days);
@@ -125,6 +125,7 @@ export default function App() {
       ...item,
       name,
       category: category === item.category ? category : (inferCategory(name) === 'Other' ? category : inferCategory(name)),
+      storageLocation: storage,
       quantity,
       buyDate: today.toISOString().split('T')[0],
       expiryDate: expiry.toISOString().split('T')[0],

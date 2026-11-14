@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FoodItem, inferCategory } from '../services/api';
+import { fetchShelfLifeApi, FoodItem, inferCategory } from '../services/api';
 
 interface InventoryScreenProps {
   inventory: FoodItem[];
   onDeleteItem: (id: string) => void;
-  onEditItem: (id: string, name: string, category: string, quantity: string, days: number) => void;
+  onEditItem: (id: string, name: string, category: string, storage: FoodItem['storageLocation'], quantity: string, days: number) => void;
   onNavigateScan: () => void;
   onBack: () => void;
 }
@@ -18,17 +18,33 @@ export default function InventoryScreen({
   onNavigateScan,
   onBack
 }: InventoryScreenProps) {
-  const [filter, setFilter] = useState<'ALL' | 'FRIDGE' | 'URGENT'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'FRIDGE' | 'PANTRY' | 'FREEZER' | 'URGENT'>('ALL');
   const [editing, setEditing] = useState<FoodItem | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [storage, setStorage] = useState<FoodItem['storageLocation']>('FRIDGE');
   const [quantity, setQuantity] = useState('');
   const [days, setDays] = useState('7');
+
+  useEffect(() => {
+    if (!editing || !name.trim()) return;
+    const timer = setTimeout(async () => {
+      try {
+        const result = await fetchShelfLifeApi(name);
+        const range = result?.ranges[storage.toLowerCase() as 'fridge' | 'freezer' | 'pantry'];
+        if (range) setDays(String(range.max));
+      } catch (error) {
+        console.warn('Shelf-life lookup unavailable:', error);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [editing, name, storage]);
 
   const openEdit = (item: FoodItem) => {
     setEditing(item);
     setName(item.name);
     setCategory(item.category);
+    setStorage(item.storageLocation);
     setQuantity(item.quantity);
     const remaining = Math.max(0, Math.ceil((new Date(item.expiryDate).getTime() - Date.now()) / 86400000));
     setDays(String(remaining));
@@ -36,12 +52,19 @@ export default function InventoryScreen({
 
   const saveEdit = () => {
     if (!editing || !name.trim()) return;
-    onEditItem(editing.id, name.trim(), category.trim() || 'Other', quantity.trim() || '1 unit', parseInt(days, 10) || 7);
+    onEditItem(editing.id, name.trim(), category.trim() || 'Other', storage, quantity.trim() || '1 unit', parseInt(days, 10) || 7);
     setEditing(null);
+  };
+
+  const handleStorageChange = (nextStorage: FoodItem['storageLocation']) => {
+    setStorage(nextStorage);
+    setDays('0');
   };
 
   const filtered = inventory.filter(item => {
     if (filter === 'FRIDGE') return item.storageLocation === 'FRIDGE';
+    if (filter === 'PANTRY') return item.storageLocation === 'PANTRY';
+    if (filter === 'FREEZER') return item.storageLocation === 'FREEZER';
     if (filter === 'URGENT') return item.urgency === 'URGENT' || item.urgency === 'WARNING';
     return true;
   });
@@ -59,14 +82,18 @@ export default function InventoryScreen({
       </View>
 
       <View style={styles.filterRow}>
-        {(['ALL', 'FRIDGE', 'URGENT'] as const).map(f => (
+        {(['ALL', 'FRIDGE', 'PANTRY', 'FREEZER', 'URGENT'] as const).map(f => (
           <TouchableOpacity
             key={f}
             style={[styles.filterChip, filter === f && styles.activeChip]}
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.filterText, filter === f && styles.activeFilterText]}>
-              {f === 'ALL' ? `All (${inventory.length})` : f === 'FRIDGE' ? 'Fridge' : 'Expiring Soon'}
+              {f === 'ALL'
+                ? `All (${inventory.length})`
+                : f === 'URGENT'
+                  ? 'Expiring Soon'
+                  : `${f.charAt(0) + f.slice(1).toLowerCase()} (${inventory.filter(item => item.storageLocation === f).length})`}
             </Text>
           </TouchableOpacity>
         ))}
@@ -116,6 +143,14 @@ export default function InventoryScreen({
             />
             <TextInput style={styles.input} value={category} onChangeText={setCategory} placeholder="Category" />
             <TextInput style={styles.input} value={quantity} onChangeText={setQuantity} placeholder="Quantity" />
+            <Text style={styles.label}>Storage area</Text>
+            <View style={styles.storageRow}>
+              {(['FRIDGE', 'FREEZER', 'PANTRY'] as const).map(option => (
+                <TouchableOpacity key={option} style={[styles.storageButton, storage === option && styles.selectedStorage]} onPress={() => handleStorageChange(option)}>
+                  <Text style={storage === option ? styles.selectedStorageText : styles.storageText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TextInput style={styles.input} value={days} onChangeText={setDays} placeholder="Days until expiry" keyboardType="numeric" />
             <View style={styles.modalButtons}>
               <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setEditing(null)}>
@@ -159,5 +194,11 @@ const styles = StyleSheet.create({
   modalButton: { flex: 1, padding: 14, borderRadius: 10, alignItems: 'center' },
   cancelButton: { backgroundColor: '#f1f5f9' },
   saveButton: { backgroundColor: '#2563eb' },
-  saveText: { color: '#ffffff', fontWeight: 'bold' }
+  saveText: { color: '#ffffff', fontWeight: 'bold' },
+  label: { fontSize: 13, color: '#475569', marginBottom: 6, fontWeight: '600' },
+  storageRow: { flexDirection: 'row', marginBottom: 10 },
+  storageButton: { flex: 1, padding: 10, borderWidth: 1, borderColor: '#cbd5e1', marginRight: 4, borderRadius: 8, alignItems: 'center' },
+  selectedStorage: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  storageText: { fontSize: 11, color: '#475569' },
+  selectedStorageText: { fontSize: 11, color: '#ffffff', fontWeight: 'bold' }
 });

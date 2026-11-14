@@ -1,6 +1,9 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 dotenv.config();
@@ -16,6 +19,18 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'baidu/ernie-5.5-flash-preview:free';
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT ||
+    path.resolve(process.cwd(), 'scripts/serviceAccountKey.json');
+let firestore: FirebaseFirestore.Firestore | null = null;
+try {
+    if (fs.existsSync(serviceAccountPath)) {
+        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+        admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+        firestore = admin.firestore();
+    }
+} catch (error) {
+    console.error('Firebase shelf-life database initialization failed:', error);
+}
 
 // Shelf life reference database (days)
 const shelfLifeRef: Record<string, number> = {
@@ -26,6 +41,71 @@ const shelfLifeRef: Record<string, number> = {
     "Bakery": 5,
     "Beverages": 7
 };
+
+interface ShelfLifeRange {
+    min: number;
+    max: number;
+}
+
+interface ShelfLifeReference {
+    mealDbName?: string;
+    aliases?: string[];
+    defaultStorage?: 'pantry' | 'fridge' | 'freezer';
+    shelfLifeDays?: {
+        pantry: ShelfLifeRange | null;
+        fridge: ShelfLifeRange | null;
+        freezer: ShelfLifeRange | null;
+    };
+}
+
+const normaliseFoodName = (value: string): string =>
+    value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+app.get('/api/shelf-life', async (req: Request, res: Response) => {
+    const ingredient = typeof req.query.ingredient === 'string'
+        ? normaliseFoodName(req.query.ingredient)
+        : '';
+    if (!ingredient) {
+        return res.status(400).json({ success: false, error: 'ingredient is required' });
+    }
+
+    try {
+        let reference: ShelfLifeReference | undefined;
+        if (firestore) {
+            const snapshot = await firestore.collection('shelfLifeReference').get();
+            reference = snapshot.docs
+                .map(doc => doc.data() as ShelfLifeReference)
+                .find(item => [item.mealDbName, ...(item.aliases || [])]
+                    .filter(Boolean)
+                    .some(name => normaliseFoodName(name as string) === ingredient));
+        }
+
+        const category = Object.entries(shelfLifeRef).find(([name]) =>
+            ingredient.includes(name.toLowerCase().replace(' & eggs', '').replace(' & poultry', ''))
+        )?.[0];
+        const fallbackDays = category ? shelfLifeRef[category] : 7;
+        const fallbackStorage = category === 'Meat & Poultry' || category === 'Dairy & Eggs'
+            ? 'fridge'
+            : 'pantry';
+        const storage = reference?.defaultStorage || fallbackStorage;
+        const range = reference?.shelfLifeDays?.[storage] || { min: fallbackDays, max: fallbackDays };
+
+        res.json({
+            success: true,
+            source: reference ? 'firebase' : 'category-fallback',
+            defaultStorage: storage.toUpperCase(),
+            ranges: reference?.shelfLifeDays || {
+                pantry: storage === 'pantry' ? range : null,
+                fridge: storage === 'fridge' ? range : null,
+                freezer: storage === 'freezer' ? range : null
+            },
+            suggestedDays: range.max
+        });
+    } catch (error) {
+        console.error('Shelf-life lookup error:', error);
+        res.status(502).json({ success: false, error: 'Unable to retrieve shelf-life data' });
+    }
+});
 
 app.get('/api/health', (req: Request, res: Response) => {
     res.json({ status: 'healthy', timestamp: new Date().toISOString() });
