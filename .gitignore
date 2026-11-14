@@ -18,3 +18,5 @@ client/node_modules/
 client/.expo/
 backend/dist/
 backend/node_modules/
+serviceAccountKey.json
+backend/scripts/serviceAccountKey.json

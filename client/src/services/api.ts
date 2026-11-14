@@ -29,6 +29,16 @@ export interface Recipe {
   substitutions: Record<string, string>;
 }
 
+export interface ShelfLifeLookup {
+  defaultStorage: FoodItem['storageLocation'];
+  suggestedDays: number;
+  ranges: {
+    pantry: { min: number; max: number } | null;
+    fridge: { min: number; max: number } | null;
+    freezer: { min: number; max: number } | null;
+  };
+}
+
 const categoryKeywords: Record<string, string[]> = {
   'Dairy & Eggs': ['milk', 'cheese', 'yogurt', 'yoghurt', 'butter', 'cream', 'egg'],
   'Fruits': ['apple', 'avocado', 'banana', 'berry', 'berries', 'grape', 'lemon', 'lime', 'mango', 'orange', 'pear', 'peach', 'pineapple', 'strawberry', 'watermelon'],
@@ -47,6 +57,16 @@ export const inferCategory = (name: string): string => {
 };
 
 const API_BASE_URL = 'http://10.0.2.2:4000/api'; // Android emulator localhost or change to backend IP
+
+export const fetchShelfLifeApi = async (ingredient: string): Promise<ShelfLifeLookup | null> => {
+  if (!ingredient.trim()) return null;
+  const response = await fetch(`${API_BASE_URL}/shelf-life?ingredient=${encodeURIComponent(ingredient)}`);
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Failed to fetch shelf-life data');
+  }
+  return data;
+};
 
 export const scanImageApi = async (imageBase64: string): Promise<ScanResult[]> => {
   try {

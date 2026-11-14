@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { inferCategory } from '../services/api';
+import { fetchShelfLifeApi, inferCategory, ShelfLifeLookup } from '../services/api';
 
 interface CameraScanScreenProps {
   isLoading: boolean;
@@ -19,15 +19,43 @@ export default function CameraScanScreen({
   const [showManualModal, setShowManualModal] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Other');
+  const [storage, setStorage] = useState<'FRIDGE' | 'FREEZER' | 'PANTRY'>('FRIDGE');
+  const [shelfLife, setShelfLife] = useState<ShelfLifeLookup | null>(null);
   const [quantity, setQuantity] = useState('1 unit');
   const [days, setDays] = useState('7');
 
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!name.trim()) {
+        setShelfLife(null);
+        return;
+      }
+      try {
+        const result = await fetchShelfLifeApi(name);
+        if (result) {
+          setShelfLife(result);
+          setStorage(result.defaultStorage);
+          setDays(String(result.suggestedDays));
+        }
+      } catch (error) {
+        console.warn('Shelf-life lookup unavailable:', error);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [name]);
+
   const handleManualSubmit = () => {
     if (name.trim()) {
-      onAddManualItem(name, category, 'FRIDGE', quantity, parseInt(days) || 7);
+      onAddManualItem(name, category, storage, quantity, parseInt(days) || 7);
       setShowManualModal(false);
       onBack();
     }
+  };
+
+  const handleStorageChange = (nextStorage: 'FRIDGE' | 'FREEZER' | 'PANTRY') => {
+    setStorage(nextStorage);
+    const range = shelfLife?.ranges[nextStorage.toLowerCase() as 'fridge' | 'freezer' | 'pantry'];
+    setDays(range ? String(range.max) : '0');
   };
 
   return (
@@ -83,7 +111,16 @@ export default function CameraScanScreen({
             />
             <TextInput style={styles.input} placeholder="Category (e.g., Vegetables)" placeholderTextColor="#94a3b8" value={category} onChangeText={setCategory} />
             <TextInput style={styles.input} placeholder="Quantity (e.g., 2 units)" placeholderTextColor="#94a3b8" value={quantity} onChangeText={setQuantity} />
-            <TextInput style={styles.input} placeholder="Shelf life in days (e.g., 7)" placeholderTextColor="#94a3b8" keyboardType="numeric" value={days} onChangeText={setDays} />
+            <Text style={styles.label}>Storage area</Text>
+            <View style={styles.storageRow}>
+              {(['FRIDGE', 'FREEZER', 'PANTRY'] as const).map(option => (
+                <TouchableOpacity key={option} style={[styles.storageButton, storage === option && styles.selectedStorage]} onPress={() => handleStorageChange(option)}>
+                  <Text style={storage === option ? styles.selectedStorageText : styles.storageText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {shelfLife && <Text style={styles.suggestion}>Suggested range: {shelfLife.ranges[storage.toLowerCase() as 'fridge' | 'freezer' | 'pantry']?.min || 0}-{shelfLife.ranges[storage.toLowerCase() as 'fridge' | 'freezer' | 'pantry']?.max || 0} days</Text>}
+            <TextInput style={styles.input} placeholder="Days until expiry" placeholderTextColor="#94a3b8" keyboardType="numeric" value={days} onChangeText={setDays} />
 
             <View style={styles.modalButtons}>
               <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowManualModal(false)}>
@@ -126,4 +163,11 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: '#475569', fontWeight: 'bold' },
   saveBtn: { backgroundColor: '#2563eb', marginLeft: 8 },
   saveBtnText: { color: '#ffffff', fontWeight: 'bold' }
+  ,label: { fontSize: 13, color: '#475569', marginBottom: 6, fontWeight: '600' },
+  storageRow: { flexDirection: 'row', marginBottom: 10 },
+  storageButton: { flex: 1, padding: 10, borderWidth: 1, borderColor: '#cbd5e1', marginRight: 4, borderRadius: 8, alignItems: 'center' },
+  selectedStorage: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  storageText: { fontSize: 11, color: '#475569' },
+  selectedStorageText: { fontSize: 11, color: '#ffffff', fontWeight: 'bold' },
+  suggestion: { fontSize: 12, color: '#2563eb', marginBottom: 8 }
 });
