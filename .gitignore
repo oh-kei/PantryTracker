@@ -20,3 +20,8 @@ backend/dist/
 backend/node_modules/
 serviceAccountKey.json
 backend/scripts/serviceAccountKey.json
+.env
+backend/.env
+client/.env
+client/android/
+client/ios/
