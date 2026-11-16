@@ -86,7 +86,7 @@ export default function RecipeListScreen() {
       keyExtractor={r => r.id}
       ListHeaderComponent={header}
       renderItem={({ item }) => <RecipeCard recipe={item} onPress={() => navigation.navigate('RecipeDetail', { recipeId: item.id })} />}
-      refreshControl={<RefreshControl refreshing={recommendations.isRefetching} onRefresh={() => recommendations.refetch()} />}
+      refreshControl={<RefreshControl refreshing={recommendations.isRefetching} onRefresh={() => { recommendations.refetch(); }} />}
       ListEmptyComponent={
         recommendations.isLoading ? (
           <ActivityIndicator style={{ marginTop: 40 }} />

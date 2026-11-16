@@ -12,3 +12,14 @@ jest.mock('@expo/vector-icons', () => {
   Icon.glyphMap = {};
   return { Ionicons: Icon };
 });
+
+// Swiping needs the native gesture + Reanimated runtime; under Jest render rows without it.
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const Swipeable = React.forwardRef(({ children }, ref) => {
+    React.useImperativeHandle(ref, () => ({ close() {}, openLeft() {}, openRight() {}, reset() {} }));
+    return React.createElement(View, null, children);
+  });
+  return { __esModule: true, default: Swipeable };
+});

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import type { InventoryItem, StorageLocation } from '../../../shared/types';
 import { Button, Chip, colours, EmptyState, StorageSelector, Stepper, styles as ui, UrgencyBadge } from '../components/ui';
 import { api } from '../data/api';
@@ -15,7 +15,7 @@ type Filter = 'ALL' | 'SOON';
 const ItemRow = ({ item, onEdit }: { item: InventoryItem; onEdit: (item: InventoryItem) => void }) => {
   const consume = useInventoryStore(s => s.consume);
   const removeItem = useInventoryStore(s => s.removeItem);
-  const swipeRef = useRef<Swipeable>(null);
+  const swipeRef = useRef<SwipeableMethods>(null);
 
   const action = (label: string, icon: keyof typeof Ionicons.glyphMap, colour: string, onPress: () => void) => (
     <Pressable
@@ -157,7 +157,7 @@ export default function InventoryScreen() {
           <Text style={local.sectionHeader}>{section.title} · {section.data.length}</Text>
         )}
         contentContainerStyle={sections.length === 0 ? { flexGrow: 1 } : { paddingBottom: 24 }}
-        ListHeaderComponent={sections.length > 0 ? <Text style={local.tip}>Tip: swipe an item left to edit, use or delete it.</Text> : null}
+        ListHeaderComponent={sections.length > 0 ? <Text style={local.tip}>Tip: swipe an item left to edit, use or delete it.</Text> : undefined}
         ListEmptyComponent={
           <EmptyState
             icon="basket-outline"

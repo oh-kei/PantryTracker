@@ -38,29 +38,29 @@ beforeEach(() => {
 });
 
 describe('InventoryScreen', () => {
-  it('groups by storage with colour-coded urgency', () => {
+  it('groups by storage with colour-coded urgency', async () => {
     useInventoryStore.setState({
       items: [item('a', 'Avocado', 1), item('b', 'Peas', 200, 'FREEZER'), item('c', 'Milk', 4)],
     });
-    renderScreen(InventoryScreen);
+    await renderScreen(InventoryScreen);
     expect(screen.getByText('Fridge · 2')).toBeTruthy();
     expect(screen.getByText('Freezer · 1')).toBeTruthy();
     expect(screen.getAllByTestId('urgency-URGENT')).toHaveLength(1);
     expect(screen.getAllByTestId('urgency-WARNING')).toHaveLength(1);
     expect(screen.getAllByTestId('urgency-SAFE')).toHaveLength(1);
 
-    fireEvent.press(screen.getByText('Expiring soon (2)'));
+    await fireEvent.press(screen.getByText('Expiring soon (2)'));
     expect(screen.queryByText('Peas')).toBeNull();
   });
 
-  it('shows an empty state', () => {
-    renderScreen(InventoryScreen);
+  it('shows an empty state', async () => {
+    await renderScreen(InventoryScreen);
     expect(screen.getByText('Your pantry is empty')).toBeTruthy();
   });
 });
 
 describe('ConfirmationScreen', () => {
-  it('flags low-confidence detections and saves only confirmed items', () => {
+  it('flags low-confidence detections and saves only confirmed items', async () => {
     const shelfLife = (name: string) => ({
       canonicalId: name.toLowerCase(), name, category: 'Produce' as const, defaultStorage: 'FRIDGE' as const, source: 'reference' as const,
       ranges: { pantry: null, fridge: { min: 3, max: 7 }, freezer: null },
@@ -74,11 +74,11 @@ describe('ConfirmationScreen', () => {
         ],
       },
     });
-    renderScreen(ConfirmationScreen);
+    await renderScreen(ConfirmationScreen);
     expect(screen.getByText('30% confident — please check')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('Remove Mystery Jar'));
-    fireEvent.press(screen.getByTestId('confirm-save'));
+    await fireEvent.press(screen.getByLabelText('Remove Mystery Jar'));
+    await fireEvent.press(screen.getByTestId('confirm-save'));
 
     const saved = useInventoryStore.getState().items;
     expect(saved).toHaveLength(1);

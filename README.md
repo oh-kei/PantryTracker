@@ -59,12 +59,17 @@ Without a Gemini key, `/api/scan` returns demo detections (labelled as such in t
 
 ### Client
 
+Requires **Node.js 22.13+** (Expo SDK 58).
+
 ```bash
 cd client
 npm install
 cp .env.example .env     # set EXPO_PUBLIC_API_URL to your laptop's LAN IP for a physical phone
 npx expo start
 ```
+
+- **iPhone / Android phone:** install **Expo Go** from the App Store / Play Store. Scan the QR code with the iPhone Camera app, or with the scanner inside Expo Go on Android. The phone and laptop must be on the same Wi-Fi.
+- **Android emulator:** press `a` in the Expo terminal, or run `npx expo run:android` for a full native build.
 
 ### Tests, lint, CI
 
