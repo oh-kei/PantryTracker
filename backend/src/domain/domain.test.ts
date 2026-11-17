@@ -37,6 +37,22 @@ describe('taxonomy', () => {
     expect(taxonomy.lookup('unicorn steak dust')?.canonicalId).not.toBe('egg');
   });
 
+  it('lets real names beat aliases of other entries (Firestore data has overlapping aliases)', () => {
+    const t = new Taxonomy();
+    const entry = (name: string, aliases: string[]) => ({
+      canonicalId: '', name, category: 'Produce' as const, defaultStorage: 'FRIDGE' as const, aliases,
+      shelfLifeDays: { pantry: null, fridge: { min: 1, max: 2 }, freezer: null },
+    });
+    t.add(entry('Banana', ['bananas']));
+    t.add(entry('Cocoy Banana', ['banana', 'plantain']));
+    t.add(entry('Strained Yoghurt', ['greek yogurt']));
+    t.add(entry('Greek Yogurt', ['strained yogurt']));
+    expect(t.lookup('banana')?.name).toBe('Banana');
+    expect(t.lookup('plantain')?.name).toBe('Cocoy Banana');
+    expect(t.lookup('Greek Yogurt')?.name).toBe('Greek Yogurt');
+    expect(t.lookup('ripe greek yogurt pot')?.name).toBe('Greek Yogurt');
+  });
+
   it('falls back to category ranges for unknown items', () => {
     const estimate = taxonomy.estimate('kefir', 'Dairy & Eggs');
     expect(estimate.source).toBe('category-fallback');

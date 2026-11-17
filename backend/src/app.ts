@@ -175,7 +175,11 @@ export const createApp = (deps: AppDeps) => {
     let raw: RawDetection[];
     let source: ScanResponse['source'];
     if (llm.vision) {
-      raw = await llm.vision.identifyFoods(imageBase64, mimeType as string);
+      try {
+        raw = await llm.vision.identifyFoods(imageBase64, mimeType as string);
+      } catch (error) {
+        throw new HttpError(502, `Photo recognition failed (${(error as Error).message}). Try again in a moment.`);
+      }
       source = 'gemini_vision';
     } else if (deps.allowMockVision) {
       raw = MOCK_DETECTIONS;

@@ -156,20 +156,24 @@ export const rangeFor = (ranges: StorageRanges, storage: StorageLocation): DayRa
  */
 export class Taxonomy {
   private readonly byId = new Map<string, TaxonomyEntry>();
+  /** Primary names: later entries win, so Firestore data overrides the built-in table. */
   private readonly byName = new Map<string, TaxonomyEntry>();
+  /** Aliases: first entry wins, and a primary name always beats an alias. */
+  private readonly byAlias = new Map<string, TaxonomyEntry>();
 
   constructor(entries: TaxonomyEntry[] = ENTRIES) {
     entries.forEach(entry => this.add(entry));
   }
 
-  /** Add or override an entry (later entries win, so Firestore can override built-ins). */
   add(entry: TaxonomyEntry): void {
     const canonicalId = entry.canonicalId || toCanonicalId(entry.name);
     const stored = { ...entry, canonicalId };
     this.byId.set(canonicalId, stored);
-    [entry.name, ...(entry.aliases || [])].forEach(name => {
-      const key = normaliseIngredient(name);
-      if (key) this.byName.set(key, stored);
+    const nameKey = normaliseIngredient(entry.name);
+    if (nameKey) this.byName.set(nameKey, stored);
+    (entry.aliases || []).forEach(alias => {
+      const key = normaliseIngredient(alias);
+      if (key && !this.byAlias.has(key)) this.byAlias.set(key, stored);
     });
   }
 
@@ -181,17 +185,21 @@ export class Taxonomy {
   lookup(label: string): TaxonomyEntry | undefined {
     const key = normaliseIngredient(label);
     if (!key) return undefined;
-    const exact = this.byName.get(key);
+    const exact = this.byName.get(key) || this.byAlias.get(key);
     if (exact) return exact;
-    // Prefer the longest alias that is a whole-word subset of the label
-    // ("chopped cherry tomatoes" -> tomato, "chicken breast fillet" -> chicken breast).
-    let best: { entry: TaxonomyEntry; length: number } | undefined;
-    for (const [name, entry] of this.byName) {
-      if (ingredientsMatch(name, key) && key.split(' ').length >= name.split(' ').length) {
-        if (!best || name.length > best.length) best = { entry, length: name.length };
+    // Prefer the longest name that is a whole-word subset of the label
+    // ("chopped cherry tomatoes" -> tomato, "chicken breast fillet" -> chicken breast),
+    // trying primary names before aliases.
+    for (const map of [this.byName, this.byAlias]) {
+      let best: { entry: TaxonomyEntry; length: number } | undefined;
+      for (const [name, entry] of map) {
+        if (ingredientsMatch(name, key) && key.split(' ').length >= name.split(' ').length) {
+          if (!best || name.length > best.length) best = { entry, length: name.length };
+        }
       }
+      if (best) return best.entry;
     }
-    return best?.entry;
+    return undefined;
   }
 
   /** Canonical ID for any label; unknown labels get a deterministic snake_case ID. */

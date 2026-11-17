@@ -51,11 +51,19 @@ The inventory is **offline-first**. The phone's store is the source of truth, an
 ```bash
 cd backend
 npm install
-cp .env.example .env     # add GEMINI_API_KEY for real photo recognition
+cp .env.example .env     # add OPENROUTER_API_KEY (or GEMINI_API_KEY)
 npm run dev              # http://localhost:4000/api/health
 ```
 
-Without a Gemini key, `/api/scan` returns demo detections (labelled as such in the app) and AI recipes are disabled. Without a Firebase service account, data is kept in memory. To populate the Firestore shelf-life table, run `npm run seed` (needs a service account and an OpenRouter key).
+Secrets go in `backend/.env` (not the repo root) and are gitignored:
+
+| Secret | Where | Enables |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | `backend/.env` | Photo recognition (free image models in `OPENROUTER_VISION_MODEL`, tried in order) plus AI recipes and substitutions |
+| `GEMINI_API_KEY` (optional) | `backend/.env` | When set, it's used instead of OpenRouter |
+| Firebase service account JSON | `backend/scripts/serviceAccountKey.json` (or the `FIREBASE_SERVICE_ACCOUNT` env var) | Firestore storage for inventory and preferences, plus the shelf-life table (about 1,000 entries) |
+
+The startup log shows what's active, for example `vision: openrouter | text: openrouter` and `storage: Firestore`. If there's no AI key, `/api/scan` returns demo detections (labelled as such in the app) and AI recipes are turned off. If there's no service account, data is kept in memory. Free OpenRouter models share rate limits, so a scan sometimes fails with "busy". Retrying usually works. To populate the Firestore shelf-life table, run `npm run seed`; it needs both a service account and an OpenRouter key.
 
 ### Client
 
