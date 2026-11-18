@@ -1,95 +1,111 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FoodItem, Recipe } from '../services/api';
+import { useNavigation } from '@react-navigation/native';
+import React from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { RankedRecipe } from '../../../shared/types';
+import { Button, Card, colours, SectionTitle, styles as ui, UrgencyBadge } from '../components/ui';
+import { urgencyOf } from '../domain/expiry';
+import { sortByExpiry } from '../domain/inventory';
+import { useRecommendations } from '../hooks/useRecipes';
+import { useInventoryStore } from '../store/inventoryStore';
 
-interface HomeScreenProps {
-  inventory: FoodItem[];
-  recipes: Recipe[];
-  onNavigateScan: () => void;
-  onNavigateInventory: () => void;
-  onNavigateRecipes: () => void;
-}
+export const RecipeRow = ({ recipe, onPress }: { recipe: RankedRecipe; onPress: () => void }) => (
+  <Pressable onPress={onPress} style={local.recipeRow} accessibilityRole="button">
+    <View style={{ flex: 1 }}>
+      <Text style={local.recipeTitle} numberOfLines={1}>{recipe.title}</Text>
+      <Text style={local.recipeMeta} numberOfLines={1}>
+        {recipe.matchPercentage}% match
+        {recipe.expiringIngredients.length > 0 ? ` · uses ${recipe.expiringIngredients.slice(0, 2).join(', ')}` : ''}
+      </Text>
+    </View>
+    <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+  </Pressable>
+);
 
-export default function HomeScreen({
-  inventory,
-  recipes,
-  onNavigateScan,
-  onNavigateInventory,
-  onNavigateRecipes
-}: HomeScreenProps) {
-  const urgentCount = inventory.filter(item => item.urgency === 'URGENT' || item.urgency === 'WARNING').length;
+/** Dashboard: expiring-soon summary, quick scan, and today's top suggestions. */
+export default function HomeScreen() {
+  const navigation = useNavigation();
+  const items = useInventoryStore(s => s.items);
+  const atRisk = sortByExpiry(items.filter(i => urgencyOf(i) !== 'SAFE'));
+  const urgent = atRisk.filter(i => urgencyOf(i) === 'URGENT').length;
+  const recommendations = useRecommendations();
+  const top = recommendations.data?.recipes.slice(0, 3) || [];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Smart Food Tracker</Text>
+    <ScrollView style={{ backgroundColor: colours.bg }} contentContainerStyle={local.content}>
+      <Card style={[local.summary, atRisk.length > 0 ? local.summaryAlert : local.summaryOk]}>
+        <Text style={local.summaryTitle}>
+          {items.length === 0
+            ? 'Start by scanning your fridge'
+            : atRisk.length === 0
+              ? 'Everything is fresh 🎉'
+              : `${atRisk.length} item${atRisk.length === 1 ? '' : 's'} expiring soon`}
+        </Text>
+        {urgent > 0 && <Text style={local.summaryText}>{urgent} need using in the next 2 days.</Text>}
+        {atRisk.slice(0, 4).map(item => (
+          <View key={item.id} style={local.riskRow}>
+            <Text style={local.riskName}>{item.name}</Text>
+            <UrgencyBadge item={item} />
+          </View>
+        ))}
+        {atRisk.length > 4 && (
+          <Pressable onPress={() => navigation.navigate('Tabs', { screen: 'Inventory' })}>
+            <Text style={local.more}>See all {atRisk.length} →</Text>
+          </Pressable>
+        )}
+        <Button title="Scan fridge or food" icon="camera" onPress={() => navigation.navigate('Scan')} style={{ marginTop: 14 }} testID="quick-scan" />
+      </Card>
+
+      <View style={local.stats}>
+        <Pressable style={local.stat} onPress={() => navigation.navigate('Tabs', { screen: 'Inventory' })}>
+          <Ionicons name="basket" size={22} color={colours.primary} />
+          <Text style={local.statValue}>{items.length}</Text>
+          <Text style={local.statLabel}>in pantry</Text>
+        </Pressable>
+        <Pressable style={local.stat} onPress={() => navigation.navigate('Tabs', { screen: 'Recipes' })}>
+          <Ionicons name="restaurant" size={22} color={colours.success} />
+          <Text style={local.statValue}>{recommendations.data?.recipes.length ?? '–'}</Text>
+          <Text style={local.statLabel}>recipes</Text>
+        </Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Expiring Soon Summary Card */}
-        <View style={[styles.card, urgentCount > 0 ? styles.alertCard : styles.successCard]}>
-          <Text style={styles.cardTitle}>
-            {urgentCount > 0 ? `⚠️ ${urgentCount} items need attention!` : '🎉 Your pantry is fresh!'}
-          </Text>
-          <Text style={styles.cardDesc}>
-            Snap a photo of your fridge or ingredients to automatically update inventory and find waste-free recipes.
-          </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={onNavigateScan}>
-            <Ionicons name="camera" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Scan Fridge / Food Photo</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Quick Actions */}
-        <View style={styles.row}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#e0f2fe' }]} onPress={onNavigateInventory}>
-            <Ionicons name="basket" size={24} color="#0284c7" />
-            <Text style={[styles.actionText, { color: '#0369a1' }]}>Pantry ({inventory.length})</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#f0fdf4' }]} onPress={onNavigateRecipes}>
-            <Ionicons name="restaurant" size={24} color="#16a34a" />
-            <Text style={[styles.actionText, { color: '#15803d' }]}>Recipes ({recipes.length})</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.sectionTitle}>Items Expiring Soon</Text>
-        {inventory
-          .filter(item => item.urgency !== 'SAFE')
-          .map(item => (
-            <View key={item.id} style={styles.itemCard}>
-              <View>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemExpiry}>Expires: {item.expiryDate}</Text>
-              </View>
-              <View style={[styles.badge, { backgroundColor: item.urgency === 'URGENT' ? '#ef4444' : '#f59e0b' }]}>
-                <Text style={styles.badgeText}>{item.urgency}</Text>
-              </View>
-            </View>
-          ))}
-      </ScrollView>
-    </SafeAreaView>
+      <SectionTitle right={top.length > 0 ? <Pressable onPress={() => navigation.navigate('Tabs', { screen: 'Recipes' })}><Text style={local.more}>All →</Text></Pressable> : undefined}>
+        Today's top suggestions
+      </SectionTitle>
+      <Card style={{ padding: 0 }}>
+        {items.length === 0 ? (
+          <Text style={[ui.muted, { padding: 16 }]}>Add some food to get recipe ideas that use up what expires first.</Text>
+        ) : recommendations.isLoading ? (
+          <ActivityIndicator style={{ padding: 20 }} />
+        ) : recommendations.isError ? (
+          <Text style={[ui.muted, { padding: 16 }]}>Couldn't load recipes: {(recommendations.error as Error).message}</Text>
+        ) : top.length === 0 ? (
+          <Text style={[ui.muted, { padding: 16 }]}>No matching recipes yet — try generating one on the Recipes tab.</Text>
+        ) : (
+          top.map(recipe => (
+            <RecipeRow key={recipe.id} recipe={recipe} onPress={() => navigation.navigate('RecipeDetail', { recipeId: recipe.id })} />
+          ))
+        )}
+      </Card>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  header: { padding: 16, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#0f172a' },
-  content: { padding: 16 },
-  card: { padding: 20, borderRadius: 16, marginBottom: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
-  alertCard: { backgroundColor: '#fee2e2' },
-  successCard: { backgroundColor: '#dcfce7' },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginBottom: 6 },
-  cardDesc: { fontSize: 14, color: '#475569', marginBottom: 16, lineHeight: 20 },
-  primaryButton: { flexDirection: 'row', backgroundColor: '#2563eb', padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16, marginLeft: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 },
-  actionBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', marginHorizontal: 6, flexDirection: 'row', justifyContent: 'center' },
-  actionText: { fontWeight: 'bold', fontSize: 15, marginLeft: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginBottom: 12 },
-  itemCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', padding: 16, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
-  itemName: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
-  itemExpiry: { fontSize: 13, color: '#ef4444', marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  badgeText: { color: '#ffffff', fontSize: 12, fontWeight: 'bold' }
+const local = StyleSheet.create({
+  content: { padding: 16, paddingBottom: 32 },
+  summary: { borderWidth: 0 },
+  summaryAlert: { backgroundColor: '#fff7ed' },
+  summaryOk: { backgroundColor: '#f0fdf4' },
+  summaryTitle: { fontSize: 20, fontWeight: '800', color: colours.text },
+  summaryText: { fontSize: 14, color: '#9a3412', marginTop: 4, marginBottom: 4 },
+  riskRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  riskName: { fontSize: 15, fontWeight: '600', color: colours.text, flex: 1, marginRight: 8 },
+  more: { color: colours.primary, fontWeight: '700', marginTop: 8 },
+  stats: { flexDirection: 'row', gap: 12, marginTop: 14 },
+  stat: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: colours.border, alignItems: 'flex-start' },
+  statValue: { fontSize: 22, fontWeight: '800', color: colours.text, marginTop: 6 },
+  statLabel: { fontSize: 13, color: colours.muted },
+  recipeRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: colours.border },
+  recipeTitle: { fontSize: 15, fontWeight: '700', color: colours.text },
+  recipeMeta: { fontSize: 13, color: colours.muted, marginTop: 2 },
 });

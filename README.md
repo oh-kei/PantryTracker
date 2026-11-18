@@ -1,83 +1,104 @@
-# SmartFoodTracker 🥗📱
+# Smart Recipe Planner (SmartFoodTracker)
 
-SmartFoodTracker is an intelligent kitchen management and recipe planning application designed to reduce household food waste through automated visual inventory tracking, shelf-life estimation, and constraint-based recipe generation.
+COMP4521 Group 12. A React Native + Node.js app that cuts household food waste. You photograph your fridge, confirm what it found, and it tracks expiry and suggests recipes that use up the food closest to going off.
 
----
+Core flow: **scan → confirm → track → cook**
 
-## 🌟 Key Features & Architecture
+## Features (mapped to the proposal)
 
-### 1. Automated Visual Recognition & Camera Capture
-- **Expo Camera Integration**: Users can photograph their fridge interior or individual produce items directly from the mobile app.
-- **Gemini Vision API**: The captured image is forwarded to the backend and processed using Google's multimodal **Gemini 1.5 Flash** model to detect food items, categories, confidence scores, and estimate shelf-life expiration dates.
-- **Privacy Guarantee**: Fridge photos are processed in-transit and discarded immediately—they are **never** persisted on servers.
+| Proposal | What's implemented | Where |
+|---|---|---|
+| 4.1 Photo capture | Expo camera with "single item" / "whole fridge" modes. Photos are compressed on the phone to ≤ 1 MB before upload. | `client/src/screens/ScanScreen.tsx` |
+| 4.2 Classification | The vision model (Gemini, or OpenRouter's free image models) returns labels, confidence, quantity and grouping, plus any legible printed use-by date and the ripeness of produce. Labels are mapped onto a canonical ingredient taxonomy. The image is never stored or logged. | `backend/src/app.ts` (`/api/scan`), `services/llm.ts`, `domain/taxonomy.ts` |
+| 4.3 Confirmation UI | Editable list with confidence chips (low-confidence items are highlighted). You can edit, delete, merge or add items. Manual entry works with no network. | `client/src/screens/ConfirmationScreen.tsx` |
+| 4.4 Inventory records | Each record stores canonical ID, quantity + unit, storage location, buy date and an expiry range. | `shared/types.d.ts` (`InventoryItem`) |
+| 5 Expiry estimation | Shelf-life reference table (built-in USDA FoodKeeper subset, overridden by the Firestore `shelfLifeReference` collection). Foods missing from the table get a validated, clamped AI estimate, labelled as such. Overripe or unripe produce shortens or lengthens the estimate. Estimates are date ranges, and the printed date overrides them: it's read from the photo when legible, or set with quick buttons (+3 days … +1 year) or a calendar. Red/amber/green tiers are derived from the date every time, never stored. Disclaimer shown. | `backend/src/domain/{taxonomy,expiry,shelfLife}.ts`, `backend/src/services/shelfLife.ts`, `client/src/components/ExpiryDateField.tsx` |
+| 6.1 Ingredient matching | Recipes and inventory share the same taxonomy, matched on whole words (so "egg" never matches "eggplant"). | `backend/src/domain/normalise.ts` |
+| 6.2 Feasibility filter | Allergens (9) and diets (vegetarian, pescatarian, vegan), with exceptions (peanut butter isn't dairy). | `backend/src/domain/dietary.ts` |
+| 6.3 Ranking | `S = 0.5·coverage + 0.3·urgency + 0.2·preference`. Preference = favourite cuisines + cooking history. Every recipe in TheMealDB (about 800, cached for a day) is ranked, not only the ones a search returns. | `backend/src/domain/ranking.ts`, `services/mealdb.ts` |
+| 6.4 Missing-ingredient display | Match %, expiring chips, missing chips, servings, "why this recipe". Pantry staples are not counted. | `RecipeListScreen.tsx`, `RecipeDetailScreen.tsx` |
+| 6.5 Substitutions | Rules by culinary role (fat, acid, thickener, binder, protein base…). Items you already own are preferred. Gemini fills gaps, and its output is validated and allergen-checked. You accept or reject each one. | `backend/src/domain/substitution.ts` |
+| 6.6 LLM adaptation | Offered when no stored recipe covers ≥ 50% of the inventory. Only names + urgency are sent. Strict JSON schema validation, then the same ranking. | `backend/src/domain/generatedRecipe.ts` |
+| 6.7 Inventory update | "I cooked this" lets you adjust how much of each item (and each accepted substitute) was used, then deducts it. | `RecipeDetailScreen.tsx`, `client/src/domain/inventory.ts` |
+| 7 UI | Home dashboard, scan & confirm, inventory grouped by storage with swipe to edit/use/delete, recipe list & detail with tickable steps, settings. | `client/src/screens/` |
+| 8 Privacy | Photos are never persisted. "Delete all my data" wipes the phone and the server. Each request is scoped to a user (Firebase ID token, or a per-install device ID in dev). | `backend/src/middleware/auth.ts` |
 
-### 2. Confirmation UI & Manual Fallbacks
-- **Editable Review List**: Detected items appear with confidence scores and estimated shelf-life days, allowing users to verify, rename, adjust quantities, or delete incorrect detections.
-- **Manual Entry Fallback**: Users can manually add food items at any time, ensuring the app remains fully functional even without camera access or internet connectivity.
+### Architecture
 
-### 3. Smart Inventory Management
-- **Urgency Badges**: Inventory items are automatically categorised by storage location (Fridge, Freezer, Pantry) and sorted by expiration urgency with clear color-coded indicators.
-- **Inventory Deduction**: Completing a recipe ("I Cooked This") automatically deducts the consumed ingredients from the pantry.
+```
+shared/types.d.ts          types shared by client and server (import type only)
+backend/src
+  domain/                  pure, framework-free logic (expiry, taxonomy, ranking, dietary, substitution)
+  services/                Gemini/OpenRouter, TheMealDB, Firestore/in-memory repository
+  middleware/auth.ts       Firebase token or dev device ID
+  app.ts                   Express routes (createApp is injectable for tests)
+  server.ts                wires real services and listens
+client/src
+  domain/                  pure logic (expiry tiers, grouping, deduction)
+  data/api.ts              the only place that calls fetch
+  store/                   Zustand (inventory + preferences persisted with AsyncStorage)
+  hooks/                   TanStack Query (recipes, substitutions) + offline-first server sync
+  navigation/              React Navigation: bottom tabs + native stack
+  screens/, components/    UI only
+```
 
-### 4. Expiry-Driven Recommendation & Substitution Engine
-- **Ranked Recipes**: Recipes are scored and ranked dynamically based on inventory coverage and expiration urgency (`Score = w1*coverage + w2*urgency + w3*preference`).
-- **Culinary Substitutions**: For missing ingredients, the system suggests intelligent culinary alternatives based on flavour profiles and properties.
+The inventory is **offline-first**. The phone's store is the source of truth, and changes are pushed to `PUT /api/inventory` (Firestore when configured). A fresh install pulls the server copy.
 
----
+## Running it
 
-## 🛠️ Tech Stack
+### Backend
 
-- **Mobile Client**: React Native (Expo) + TypeScript (`/client`) sharing types and interfaces with the server.
-- **Backend API**: Node.js + Express + TypeScript (`/backend`), connecting to Gemini API (`@google/generative-ai`).
-- **Continuous Integration**: GitHub Actions CI workflow (`.github/workflows/ci.yml`) for automated client typechecking and backend compilation.
-- **Deployment**: Docker containerization (`backend/Dockerfile`).
+```bash
+cd backend
+npm install
+cp .env.example .env     # add OPENROUTER_API_KEY (or GEMINI_API_KEY)
+npm run dev              # http://localhost:4000/api/health
+```
 
----
+Secrets go in `backend/.env` (not the repo root) and are gitignored:
 
-## 🚀 Getting Started
+| Secret | Where | Enables |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | `backend/.env` | Photo recognition (free image models in `OPENROUTER_VISION_MODEL`, tried in order) plus AI recipes and substitutions |
+| `GEMINI_API_KEY` (optional) | `backend/.env` | When set, it's used instead of OpenRouter |
+| Firebase service account JSON | `backend/scripts/serviceAccountKey.json` (or the `FIREBASE_SERVICE_ACCOUNT` env var) | Firestore storage for inventory and preferences, plus the shelf-life table (about 1,000 entries) |
 
-### 1. Running the React Native Client
-1. Navigate to the `client` directory:
-   ```bash
-   cd client
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start Expo development server:
-   ```bash
-   npx expo start
-   ```
+The startup log shows what's active, for example `vision: openrouter | text: openrouter` and `storage: Firestore`. If there's no AI key, `/api/scan` returns demo detections (labelled as such in the app) and AI recipes are turned off. If there's no service account, data is kept in memory. Free OpenRouter models share rate limits, so a scan sometimes fails with "busy". Retrying usually works. To populate the Firestore shelf-life table, run `npm run seed`; it needs both a service account and an OpenRouter key.
 
-### 2. Running the Express Backend API
-1. Navigate to the `backend` directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Set your Gemini API key in an `.env` file (optional; falls back to simulated intelligent mock data if not provided):
-   ```env
-   PORT=4000
-   GEMINI_API_KEY=your_gemini_api_key_here
-   OPENROUTER_API_KEY=your_openrouter_api_key_here
-   OPENROUTER_MODEL=baidu/ernie-5.5-flash-preview:free
-   ```
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
+### Client
 
----
+Requires **Node.js 22.13+** (Expo SDK 58).
 
-## 🚢 CI/CD & Deployment
+```bash
+cd client
+npm install
+cp .env.example .env     # set EXPO_PUBLIC_API_URL to your laptop's LAN IP for a physical phone
+npx expo start
+```
 
-- **CI Pipeline**: Automated on every push/PR via [ci.yml](file:///C:/Users/kei/AndroidStudioProjects/SmartFoodTracker/.github/workflows/ci.yml).
-- **Docker**: Build and run the backend container:
-  ```bash
-  docker build -t smart-food-tracker-backend ./backend
-  docker run -p 4000:4000 -e GEMINI_API_KEY=your_key smart-food-tracker-backend
-  ```
+- **iPhone / Android phone:** install **Expo Go** from the App Store / Play Store. Scan the QR code with the iPhone Camera app, or with the scanner inside Expo Go on Android. The phone and laptop must be on the same Wi-Fi.
+- **Android emulator:** press `a` in the Expo terminal, or run `npx expo run:android` for a full native build.
+
+### Tests, lint, CI
+
+```bash
+cd backend && npm run typecheck && npm run lint && npm test
+cd client  && npm run typecheck && npm run lint && npm test
+```
+
+The tests cover expiry-tier boundaries, ranking weights, the scripted scenario "5 items expiring in 2 days", the feasibility filter, substitution filtering, generated-recipe validation, every API endpoint (Supertest), and the inventory and confirmation screens (React Native Testing Library). Vision, LLM and TheMealDB use recorded fixtures, so CI never calls a live API. GitHub Actions runs all of this on every PR.
+
+### Docker
+
+```bash
+docker build -f backend/Dockerfile -t smart-food-tracker-backend .
+docker run -p 4000:4000 -e GEMINI_API_KEY=your_key smart-food-tracker-backend
+```
+
+In production (`NODE_ENV=production`), device-ID auth and demo detections are off. Requests must carry a Firebase ID token.
+
+## Known limitations
+
+- The client doesn't sign in with Firebase Auth yet. It uses a per-install device ID, which the backend only accepts outside production. To switch, call `setAuthTokenProvider(() => auth.currentUser?.getIdToken())` in `client/src/data/api.ts` once a Firebase web config is added.
+- Local storage uses AsyncStorage rather than MMKV, so the app still runs in Expo Go. MMKV needs a dev build.
+- TheMealDB has no servings field, so database recipes show "serves about 4".

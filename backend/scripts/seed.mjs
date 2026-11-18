@@ -3,9 +3,10 @@ import path from "path";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
 import OpenAI from "openai";
+import { fileURLToPath } from "url";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 
 // 1. Initialize Firebase Admin
 const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT ||
