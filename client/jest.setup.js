@@ -23,3 +23,11 @@ jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
   });
   return { __esModule: true, default: Swipeable };
 });
+
+// The calendar is a native view; under Jest render a placeholder.
+jest.mock('@react-native-community/datetimepicker', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const Picker = props => React.createElement(View, { testID: props.testID });
+  return { __esModule: true, default: Picker };
+});

@@ -7,6 +7,9 @@ export interface RawDetection {
   quantity: number;
   unit: string;
   group?: string;
+  /** Use-by / best-before date as printed on the pack, YYYY-MM-DD (checked later). */
+  printedDate?: string;
+  ripeness?: 'unripe' | 'ripe' | 'overripe';
 }
 
 export interface VisionClient {
@@ -27,7 +30,9 @@ Return ONLY a JSON object of the form {"items": [...]} (an empty array if there 
  "confidence": number between 0 and 1,
  "quantity": integer count of visible units (1 if unsure),
  "unit": string ("unit", "bag", "bottle", "carton", "pack", "g"),
- "group": optional string naming the package when several items share one (e.g. "egg carton")}`;
+ "group": optional string naming the package when several items share one (e.g. "egg carton"),
+ "printedDate": optional "YYYY-MM-DD", only if a use-by, best-before or expiry date is clearly legible on this item's packaging (never guess),
+ "ripeness": optional, for fresh fruit and vegetables only: "unripe", "ripe" or "overripe" (brown spots, wilting, soft patches)}`;
 
 /** Extract the first JSON value from a model response, tolerating code fences or prose. */
 export const extractJson = (text: string): unknown => {
@@ -59,6 +64,8 @@ export const parseDetections = (value: unknown): RawDetection[] => {
       quantity: Number.isFinite(quantity) && quantity > 0 ? Math.min(quantity, 99) : 1,
       unit: typeof e.unit === 'string' && e.unit.trim() ? e.unit.trim() : 'unit',
       group: typeof e.group === 'string' && e.group.trim() ? e.group.trim() : undefined,
+      ...(typeof e.printedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.printedDate.trim()) ? { printedDate: e.printedDate.trim() } : {}),
+      ...(['unripe', 'ripe', 'overripe'].includes(e.ripeness as string) ? { ripeness: e.ripeness as RawDetection['ripeness'] } : {}),
     }];
   });
 };

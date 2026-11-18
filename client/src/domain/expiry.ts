@@ -58,3 +58,35 @@ export const estimateExpiry = (buyDate: string, range: DayRange | null): { earli
   const safe = range || { min: 3, max: 7 };
   return { earliest: addDays(buyDate, safe.min), latest: addDays(buyDate, safe.max) };
 };
+
+/** One-tap choices for a printed date ("best before ~1 week from now"). */
+export const QUICK_DATE_OPTIONS: { label: string; days: number }[] = [
+  { label: '+3 days', days: 3 },
+  { label: '+1 week', days: 7 },
+  { label: '+2 weeks', days: 14 },
+  { label: '+1 month', days: 30 },
+  { label: '+3 months', days: 90 },
+  { label: '+1 year', days: 365 },
+];
+
+/** "today", "tomorrow", "in 5 days", "3 days ago". */
+export const relativeDays = (date: string, today: string = todayString()): string => {
+  const days = daysUntil(date, today);
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days === -1) return 'yesterday';
+  return days > 0 ? `in ${days} days` : `${-days} days ago`;
+};
+
+/** "Wed 25 Nov 2026" (UTC so the calendar date never shifts with the time zone). */
+export const formatLongDate = (date: string): string =>
+  new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+
+/** Calendar picker <-> YYYY-MM-DD. The picker works in local time, so read local fields. */
+export const dateToString = (date: Date): string => todayString(date);
+export const stringToLocalDate = (value: string): Date => {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d, 12);
+};

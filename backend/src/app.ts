@@ -14,11 +14,13 @@ import { ALLERGEN_RULES, isRecipeFeasible } from './domain/dietary';
 import { expiryWindow, todayString } from './domain/expiry';
 import { buildRecipePrompt, RECIPE_SYSTEM_PROMPT, validateGeneratedRecipe } from './domain/generatedRecipe';
 import { DEFAULT_WEIGHTS, GENERATE_SUGGESTION_THRESHOLD, rankRecipes, RankingWeights, RecipeCandidate, scoreRecipe } from './domain/ranking';
+import { adjustForRipeness, plausiblePrintedDate } from './domain/shelfLife';
 import { suggestSubstitutions, validateLlmSubstitutions } from './domain/substitution';
 import { rangeFor, Taxonomy } from './domain/taxonomy';
 import { authenticate, AuthedRequest, TokenVerifier } from './middleware/auth';
 import type { LlmClients, RawDetection } from './services/llm';
 import type { RecipeSource } from './services/mealdb';
+import { ShelfLifeService } from './services/shelfLife';
 import type { UserDataRepository } from './services/repository';
 
 export interface AppDeps {
@@ -26,6 +28,8 @@ export interface AppDeps {
   recipes: RecipeSource;
   repository: UserDataRepository;
   taxonomy: Taxonomy;
+  /** Defaults to the taxonomy plus AI estimates from llm.text. */
+  shelfLife?: ShelfLifeService;
   verifyToken?: TokenVerifier;
   allowDeviceAuth?: boolean;
   /** Return canned detections when no vision model is configured (demo mode). */
@@ -122,6 +126,7 @@ export const createApp = (deps: AppDeps) => {
     weights = DEFAULT_WEIGHTS,
     today = () => todayString(),
   } = deps;
+  const shelfLife = deps.shelfLife || new ShelfLifeService(taxonomy, llm.text);
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '4mb' }));
@@ -139,10 +144,10 @@ export const createApp = (deps: AppDeps) => {
   app.use('/api', authenticate({ verifyToken: deps.verifyToken, allowDeviceAuth: deps.allowDeviceAuth ?? true }));
 
   /** Shelf-life lookup for manual entry / editing (section 5). */
-  app.get('/api/shelf-life', (req, res) => {
-    const ingredient = typeof req.query.ingredient === 'string' ? req.query.ingredient.trim() : '';
+  app.get('/api/shelf-life', asyncRoute(async (req, res) => {
+    const ingredient = typeof req.query.ingredient === 'string' ? req.query.ingredient.trim().slice(0, 80) : '';
     if (!ingredient) throw new HttpError(400, 'ingredient is required');
-    const estimate = taxonomy.estimate(ingredient);
+    const estimate = await shelfLife.estimate(ingredient);
     const storage = STORAGES.includes(req.query.storage as StorageLocation)
       ? req.query.storage as StorageLocation
       : estimate.defaultStorage;
@@ -154,7 +159,7 @@ export const createApp = (deps: AppDeps) => {
       storage,
       expiry: range ? expiryWindow(buyDate, range) : null,
     });
-  });
+  }));
 
   /**
    * Photo recognition (section 4). The image only lives in memory for the duration
@@ -188,21 +193,27 @@ export const createApp = (deps: AppDeps) => {
       throw new HttpError(503, 'Photo recognition is not configured; add items manually');
     }
 
-    const items: DetectedItem[] = raw.map(detection => {
-      const shelfLife = taxonomy.estimate(detection.label);
-      return {
+    const date = today();
+    const items: DetectedItem[] = (await Promise.all(raw.map(async detection => {
+      const estimate = await shelfLife.estimate(detection.label);
+      const ripeness = estimate.category === 'Produce' ? detection.ripeness : undefined;
+      const printedDate = plausiblePrintedDate(detection.printedDate, date);
+      const item: DetectedItem = {
         label: detection.label,
-        name: shelfLife.name,
-        canonicalId: shelfLife.canonicalId,
-        category: shelfLife.category,
+        name: estimate.name,
+        canonicalId: estimate.canonicalId,
+        category: estimate.category,
         confidence: detection.confidence,
         quantity: detection.quantity,
         unit: detection.unit,
         group: detection.group,
-        storageLocation: shelfLife.defaultStorage,
-        shelfLife,
+        storageLocation: estimate.defaultStorage,
+        shelfLife: { ...estimate, ranges: adjustForRipeness(estimate.ranges, ripeness, estimate.category) },
+        ...(printedDate ? { printedDate } : {}),
+        ...(ripeness ? { ripeness } : {}),
       };
-    }).sort((a, b) => b.confidence - a.confidence);
+      return item;
+    }))).sort((a, b) => b.confidence - a.confidence);
 
     const response: ScanResponse = { success: true, source, items };
     res.json(response);
@@ -219,6 +230,32 @@ export const createApp = (deps: AppDeps) => {
       return res.json(empty);
     }
 
+    const ranked = rankRecipes(await recipeCandidates(inventory), inventory, preferences, taxonomy, date, weights)
+      // With the whole catalogue loaded, skip recipes that use nothing you own.
+      .filter(recipe => recipe.ingredients.some(i => i.inventoryItemId))
+      .slice(0, 10);
+    const best = ranked[0]?.score.coverage ?? 0;
+    const response: RecommendResponse = {
+      success: true,
+      recipes: ranked,
+      suggestGenerate: Boolean(llm.text) && best < GENERATE_SUGGESTION_THRESHOLD,
+    };
+    res.json(response);
+  }));
+
+  /**
+   * Every recipe in the catalogue when the source can list it (TheMealDB: ~300),
+   * otherwise up to 24 found by searching for the most urgent ingredients.
+   */
+  const recipeCandidates = async (inventory: RecipeInventoryItem[]): Promise<RecipeCandidate[]> => {
+    if (recipes.all) {
+      try {
+        const all = await recipes.all();
+        if (all.length > 0) return all;
+      } catch (error) {
+        console.warn('Recipe catalogue unavailable, searching by ingredient:', (error as Error).message);
+      }
+    }
     // Search with the most urgent ingredients first so their recipes are always considered.
     const byUrgency = [...inventory].sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
     const terms = [...new Set(byUrgency.map(item => taxonomy.displayNameFor(item.name).toLowerCase()))].slice(0, 8);
@@ -236,18 +273,9 @@ export const createApp = (deps: AppDeps) => {
     for (let i = 0; ids.length < 24 && idLists.some(list => i < list.length); i++) {
       idLists.forEach(list => { if (list[i] && !ids.includes(list[i])) ids.push(list[i]); });
     }
-    const candidates = (await Promise.all(ids.slice(0, 24).map(id => recipes.lookup(id).catch(() => null))))
+    return (await Promise.all(ids.slice(0, 24).map(id => recipes.lookup(id).catch(() => null))))
       .filter((r): r is RecipeCandidate => Boolean(r));
-
-    const ranked = rankRecipes(candidates, inventory, preferences, taxonomy, date, weights).slice(0, 10);
-    const best = ranked[0]?.score.coverage ?? 0;
-    const response: RecommendResponse = {
-      success: true,
-      recipes: ranked,
-      suggestGenerate: Boolean(llm.text) && best < GENERATE_SUGGESTION_THRESHOLD,
-    };
-    res.json(response);
-  }));
+  };
 
   /** LLM adaptation when no stored recipe fits (section 6.6). */
   app.post('/api/recipes/generate', asyncRoute(async (req, res) => {

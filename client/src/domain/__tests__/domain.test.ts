@@ -1,6 +1,6 @@
 import type { InventoryItem, RankedRecipe } from '../../../../shared/types';
-import { addDays, daysUntil, describeExpiry, isValidDate, urgencyOf } from '../expiry';
-import { applyUsage, DraftItem, draftToItem, groupByStorage, mergeDrafts, plannedUsage } from '../inventory';
+import { addDays, dateToString, daysUntil, describeExpiry, isValidDate, relativeDays, stringToLocalDate, urgencyOf } from '../expiry';
+import { applyUsage, DraftItem, draftFromDetection, draftToItem, groupByStorage, mergeDrafts, plannedUsage } from '../inventory';
 
 const TODAY = '2026-11-15';
 
@@ -83,5 +83,29 @@ describe('inventory', () => {
     expect(usage).toEqual([{ itemId: 'egg', amount: 1 }, { itemId: 'oil', amount: 1 }]);
     const after = applyUsage(inventory, [{ itemId: 'egg', amount: 2 }, { itemId: 'oil', amount: 1 }]);
     expect(after.map(i => [i.id, i.quantity])).toEqual([['egg', 4], ['milk', 2]]);
+  });
+});
+
+describe('manual date entry', () => {
+  it('describes dates relative to today', () => {
+    expect(relativeDays('2026-11-18', '2026-11-18')).toBe('today');
+    expect(relativeDays('2026-11-19', '2026-11-18')).toBe('tomorrow');
+    expect(relativeDays('2026-11-25', '2026-11-18')).toBe('in 7 days');
+    expect(relativeDays('2026-11-15', '2026-11-18')).toBe('3 days ago');
+  });
+
+  it('round-trips calendar dates without time-zone drift', () => {
+    expect(dateToString(stringToLocalDate('2026-12-31'))).toBe('2026-12-31');
+    expect(dateToString(stringToLocalDate('2027-03-01'))).toBe('2027-03-01');
+  });
+
+  it('uses a printed date read from the photo', () => {
+    const draft = draftFromDetection({
+      label: 'milk', name: 'Milk', canonicalId: 'milk', category: 'Dairy & Eggs', confidence: 0.9, quantity: 1, unit: 'carton',
+      storageLocation: 'FRIDGE', printedDate: '2026-11-30',
+      shelfLife: { canonicalId: 'milk', name: 'Milk', category: 'Dairy & Eggs', defaultStorage: 'FRIDGE', source: 'reference', ranges: { pantry: null, fridge: { min: 5, max: 7 }, freezer: null } },
+    });
+    expect(draft).toMatchObject({ labelDate: '2026-11-30', labelFromPhoto: true, estimateSource: 'reference' });
+    expect(draftToItem(draft, '2026-11-18')).toMatchObject({ expiryDate: '2026-11-30', expirySource: 'label' });
   });
 });

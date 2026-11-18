@@ -3,6 +3,8 @@ import type {
   InventoryItem,
   RankedRecipe,
   RecipeInventoryItem,
+  Ripeness,
+  ShelfLifeEstimate,
   StorageLocation,
   StorageRanges,
   Substitution,
@@ -48,8 +50,13 @@ export interface DraftItem {
   unit: string;
   storageLocation: StorageLocation;
   ranges: StorageRanges | null;
-  /** Printed date entered by the user (YYYY-MM-DD); overrides the estimate. */
+  /** Printed date (YYYY-MM-DD); overrides the estimate. */
   labelDate?: string;
+  /** labelDate was read off the packaging by the AI and should be checked. */
+  labelFromPhoto?: boolean;
+  ripeness?: Ripeness;
+  /** Where the shelf-life ranges came from (table, AI estimate or generic category). */
+  estimateSource?: ShelfLifeEstimate['source'];
 }
 
 export const draftFromDetection = (d: DetectedItem): DraftItem => ({
@@ -63,6 +70,9 @@ export const draftFromDetection = (d: DetectedItem): DraftItem => ({
   unit: d.unit,
   storageLocation: d.storageLocation,
   ranges: d.shelfLife.ranges,
+  estimateSource: d.shelfLife.source,
+  ...(d.printedDate ? { labelDate: d.printedDate, labelFromPhoto: true } : {}),
+  ...(d.ripeness ? { ripeness: d.ripeness } : {}),
 });
 
 /** Merge drafts into the first one, summing quantities (e.g. two "egg" detections). */

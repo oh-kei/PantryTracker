@@ -39,8 +39,12 @@ export interface ShelfLifeEstimate {
   category: FoodCategory;
   defaultStorage: StorageLocation;
   ranges: StorageRanges;
-  source: 'reference' | 'category-fallback';
+  /** reference = shelf-life table, ai-estimate = AI answer for a food not in the table. */
+  source: 'reference' | 'ai-estimate' | 'category-fallback';
 }
+
+/** Ripeness the vision model saw (produce only); it shortens or lengthens the estimate. */
+export type Ripeness = 'unripe' | 'ripe' | 'overripe';
 
 /** One item in the user's pantry. Urgency is always derived from expiryDate, never stored. */
 export interface InventoryItem {
@@ -73,7 +77,11 @@ export interface DetectedItem {
   /** Items Gemini thinks belong together in one photo (e.g. "egg carton"). */
   group?: string;
   storageLocation: StorageLocation;
+  /** Ranges here already include the ripeness adjustment. */
   shelfLife: ShelfLifeEstimate;
+  /** Use-by / best-before date read off the packaging (YYYY-MM-DD), if legible. */
+  printedDate?: string;
+  ripeness?: Ripeness;
 }
 
 export interface ScanResponse {

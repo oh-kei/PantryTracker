@@ -59,12 +59,42 @@ describe('InventoryScreen', () => {
   });
 });
 
+const shelfLife = (name: string, source: 'reference' | 'ai-estimate' = 'reference') => ({
+  canonicalId: name.toLowerCase(), name, category: 'Produce' as const, defaultStorage: 'FRIDGE' as const, source,
+  ranges: { pantry: null, fridge: { min: 3, max: 7 }, freezer: null },
+});
+
 describe('ConfirmationScreen', () => {
-  it('flags low-confidence detections and saves only confirmed items', async () => {
-    const shelfLife = (name: string) => ({
-      canonicalId: name.toLowerCase(), name, category: 'Produce' as const, defaultStorage: 'FRIDGE' as const, source: 'reference' as const,
-      ranges: { pantry: null, fridge: { min: 3, max: 7 }, freezer: null },
+  it('pre-fills printed dates read from the photo and sets dates with one tap', async () => {
+    const printed = addDays(today, 10);
+    useSessionStore.setState({
+      scan: {
+        source: 'gemini_vision',
+        items: [
+          { label: 'milk', name: 'Milk', canonicalId: 'milk', category: 'Produce', confidence: 0.9, quantity: 1, unit: 'carton', storageLocation: 'FRIDGE', shelfLife: shelfLife('Milk'), printedDate: printed },
+          { label: 'kefir', name: 'Kefir', canonicalId: 'kefir', category: 'Produce', confidence: 0.9, quantity: 1, unit: 'unit', storageLocation: 'FRIDGE', shelfLife: shelfLife('Kefir', 'ai-estimate'), ripeness: 'overripe' },
+        ],
+      },
     });
+    await renderScreen(ConfirmationScreen);
+    expect(screen.getByText(/read from the label, please check/)).toBeTruthy();
+    expect(screen.getByText('AI shelf-life estimate')).toBeTruthy();
+    expect(screen.getByText('Looks overripe')).toBeTruthy();
+
+    // Second item: tap "+2 weeks", then open the calendar.
+    await fireEvent.press(screen.getAllByText('+2 weeks')[1]);
+    await fireEvent.press(screen.getAllByText('Pick date…')[1]);
+    expect(screen.getByTestId('expiry-date-picker')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('confirm-save'));
+
+    const saved = useInventoryStore.getState().items;
+    expect(saved.map(i => [i.name, i.expiryDate, i.expirySource])).toEqual([
+      ['Milk', printed, 'label'],
+      ['Kefir', addDays(today, 14), 'label'],
+    ]);
+  });
+
+  it('flags low-confidence detections and saves only confirmed items', async () => {
     useSessionStore.setState({
       scan: {
         source: 'gemini_vision',

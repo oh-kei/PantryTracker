@@ -3,6 +3,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ExpiryDateField } from '../components/ExpiryDateField';
 import { Button, Card, Chip, colours, StorageSelector, Stepper, styles as ui } from '../components/ui';
 import { LOW_CONFIDENCE } from '../config';
 import { api } from '../data/api';
@@ -28,7 +29,7 @@ const emptyDraft = (): DraftItem => ({
 
 const ExpiryPreview = ({ draft }: { draft: DraftItem }) => {
   if (draft.labelDate && isValidDate(draft.labelDate)) {
-    return <Text style={local.expiry}>Printed date: {formatShort(draft.labelDate)} ({daysUntil(draft.labelDate)} days)</Text>;
+    return <Text style={local.expiry}>Using the printed date: {formatShort(draft.labelDate)} ({daysUntil(draft.labelDate)} days)</Text>;
   }
   const range = draft.ranges ? rangeFor(draft.ranges, draft.storageLocation) : null;
   if (draft.ranges && !range) {
@@ -38,7 +39,10 @@ const ExpiryPreview = ({ draft }: { draft: DraftItem }) => {
   return (
     <Text style={local.expiry}>
       Estimated expiry: {formatShort(window.earliest)} – {formatShort(window.latest)}
-      {!draft.ranges ? ' (generic estimate)' : ''}
+      {!draft.ranges || draft.estimateSource === 'category-fallback' ? ' (generic estimate for this type of food)' : ''}
+      {draft.estimateSource === 'ai-estimate' ? ' (AI estimate: not in our shelf-life table)' : ''}
+      {draft.ripeness === 'overripe' ? ' · shortened because it looks overripe' : ''}
+      {draft.ripeness === 'unripe' ? ' · a few extra days because it looks unripe' : ''}
     </Text>
   );
 };
@@ -77,6 +81,8 @@ export default function ConfirmationScreen() {
         canonicalId: result.canonicalId,
         category: result.category,
         ranges: result.ranges,
+        estimateSource: result.source,
+        ripeness: undefined,
         storageLocation: draft.ranges ? draft.storageLocation : result.defaultStorage,
       });
     } catch {
@@ -169,6 +175,10 @@ export default function ConfirmationScreen() {
                 )}
                 {draft.group && <Chip icon="cube-outline" label={draft.group} />}
                 {draft.category !== 'Other' && <Chip label={draft.category} />}
+                {draft.ripeness && draft.ripeness !== 'ripe' && (
+                  <Chip icon="leaf-outline" label={draft.ripeness === 'overripe' ? 'Looks overripe' : 'Looks unripe'} colour="#b45309" background="#fef3c7" />
+                )}
+                {draft.estimateSource === 'ai-estimate' && <Chip icon="sparkles-outline" label="AI shelf-life estimate" colour={colours.ai} background="#ede9fe" />}
                 {lookingUp === draft.key && <Chip label="Looking up shelf life…" />}
               </View>
 
@@ -186,13 +196,11 @@ export default function ConfirmationScreen() {
               <StorageSelector value={draft.storageLocation} onChange={storageLocation => update(draft.key, { storageLocation })} />
 
               <Text style={ui.label}>Printed expiry date (optional)</Text>
-              <TextInput
-                style={ui.input}
-                value={draft.labelDate || ''}
-                placeholder="YYYY-MM-DD — overrides the estimate"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numbers-and-punctuation"
-                onChangeText={text => update(draft.key, { labelDate: text.trim() || undefined })}
+              <ExpiryDateField
+                testID={`expiry-${draft.key}`}
+                value={draft.labelDate}
+                fromPhoto={draft.labelFromPhoto}
+                onChange={labelDate => update(draft.key, { labelDate, labelFromPhoto: false })}
               />
               <ExpiryPreview draft={draft} />
             </Card>

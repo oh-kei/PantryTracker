@@ -100,6 +100,45 @@ const BUILT_IN: Array<[string, FoodCategory, StorageLocation, R, R, R, string[]]
   ['Parsley', 'Spices & Herbs', 'FRIDGE', null, [7, 14], [120, 180], ['fresh parsley']],
   ['Coriander', 'Spices & Herbs', 'FRIDGE', null, [7, 10], [120, 180], ['cilantro']],
   ['Orange Juice', 'Beverages', 'FRIDGE', null, [7, 10], [240, 365], []],
+  // Common in Hong Kong and Asian kitchens, plus everyday items the original table missed.
+  ['Bok Choy', 'Produce', 'FRIDGE', null, [3, 5], null, ['pak choi', 'pak choy', 'shanghai pak choi']],
+  ['Choy Sum', 'Produce', 'FRIDGE', null, [3, 5], null, ['chinese flowering cabbage']],
+  ['Chinese Cabbage', 'Produce', 'FRIDGE', null, [7, 14], null, ['napa cabbage', 'wombok']],
+  ['Bean Sprouts', 'Produce', 'FRIDGE', null, [1, 3], null, ['beansprout', 'mung bean sprouts']],
+  ['Leek', 'Produce', 'FRIDGE', null, [7, 14], [300, 365], ['leeks']],
+  ['Chilli', 'Produce', 'FRIDGE', null, [7, 14], [180, 240], ['chili', 'red chilli', 'chili pepper', 'bird eye chilli']],
+  ['Pumpkin', 'Produce', 'PANTRY', [30, 90], [7, 10], [240, 365], ['butternut squash', 'squash']],
+  ['Asparagus', 'Produce', 'FRIDGE', null, [3, 4], [240, 300], []],
+  ['Pear', 'Produce', 'PANTRY', [3, 7], [5, 12], [240, 365], ['pears']],
+  ['Peach', 'Produce', 'PANTRY', [1, 3], [3, 5], [240, 365], ['peaches', 'nectarine']],
+  ['Pineapple', 'Produce', 'PANTRY', [1, 2], [5, 7], [180, 365], []],
+  ['Watermelon', 'Produce', 'PANTRY', [7, 10], [14, 21], [240, 365], []],
+  ['Kiwi', 'Produce', 'PANTRY', [3, 7], [21, 28], [120, 180], ['kiwi fruit']],
+  ['Cherry', 'Produce', 'FRIDGE', null, [4, 7], [180, 240], ['cherries']],
+  ['Raspberry', 'Produce', 'FRIDGE', null, [1, 3], [240, 365], ['raspberries']],
+  ['Cream Cheese', 'Dairy & Eggs', 'FRIDGE', null, [14, 21], [30, 60], []],
+  ['Chicken Wings', 'Meat & Seafood', 'FRIDGE', null, [1, 2], [270, 270], ['chicken wing']],
+  ['Whole Chicken', 'Meat & Seafood', 'FRIDGE', null, [1, 2], [365, 365], []],
+  ['Pork Belly', 'Meat & Seafood', 'FRIDGE', null, [3, 5], [120, 180], []],
+  ['Pork Mince', 'Meat & Seafood', 'FRIDGE', null, [1, 2], [90, 120], ['minced pork', 'ground pork']],
+  ['Duck', 'Meat & Seafood', 'FRIDGE', null, [1, 2], [180, 180], ['duck breast']],
+  ['Squid', 'Meat & Seafood', 'FRIDGE', null, [1, 2], [90, 180], ['calamari']],
+  ['Crab', 'Meat & Seafood', 'FRIDGE', null, [1, 2], [60, 120], []],
+  ['Fish Balls', 'Meat & Seafood', 'FRIDGE', null, [3, 5], [60, 90], ['fish ball']],
+  ['Canned Tuna', 'Pantry & Dry Goods', 'PANTRY', [730, 1095], [3, 4], null, ['tinned tuna', 'tuna can']],
+  ['Egg Noodles', 'Pantry & Dry Goods', 'PANTRY', [180, 365], null, null, ['dried egg noodles']],
+  ['Rice Noodles', 'Pantry & Dry Goods', 'PANTRY', [365, 730], null, null, ['vermicelli', 'rice vermicelli', 'ho fun']],
+  ['Instant Noodles', 'Pantry & Dry Goods', 'PANTRY', [180, 365], null, null, ['ramen packet', 'cup noodles']],
+  ['Frozen Dumplings', 'Meat & Seafood', 'FREEZER', null, [1, 2], [90, 180], ['dumplings', 'gyoza', 'dim sum']],
+  ['Coconut Milk', 'Pantry & Dry Goods', 'PANTRY', [365, 730], [4, 6], [30, 60], ['coconut cream']],
+  ['Peanut Butter', 'Condiments & Sauces', 'PANTRY', [180, 270], [180, 270], null, []],
+  ['Oyster Sauce', 'Condiments & Sauces', 'PANTRY', [365, 730], [180, 365], null, []],
+  ['Fish Sauce', 'Condiments & Sauces', 'PANTRY', [730, 1095], null, null, []],
+  ['Sesame Oil', 'Condiments & Sauces', 'PANTRY', [180, 365], [365, 730], null, []],
+  ['Ketchup', 'Condiments & Sauces', 'PANTRY', [180, 365], [180, 180], null, ['tomato ketchup']],
+  ['Mayonnaise', 'Condiments & Sauces', 'FRIDGE', null, [60, 90], null, ['mayo']],
+  ['Kimchi', 'Condiments & Sauces', 'FRIDGE', null, [90, 180], null, []],
+  ['Jam', 'Condiments & Sauces', 'PANTRY', [365, 730], [180, 365], null, ['jelly', 'marmalade']],
 ];
 
 const ENTRIES: TaxonomyEntry[] = BUILT_IN.map(([name, category, defaultStorage, pantry, fridge, freezer, aliases]) => ({
@@ -123,6 +162,8 @@ const CATEGORY_FALLBACK: Record<FoodCategory, { storage: StorageLocation; ranges
   Beverages: { storage: 'FRIDGE', ranges: { pantry: { min: 90, max: 365 }, fridge: { min: 5, max: 10 }, freezer: null } },
   Other: { storage: 'FRIDGE', ranges: { pantry: { min: 3, max: 7 }, fridge: { min: 3, max: 7 }, freezer: { min: 60, max: 90 } } },
 };
+
+export const FOOD_CATEGORIES = Object.keys(CATEGORY_FALLBACK) as FoodCategory[];
 
 const CATEGORY_KEYWORDS: Array<[FoodCategory, string[]]> = [
   ['Meat & Seafood', ['beef', 'chicken', 'duck', 'lamb', 'meat', 'pork', 'sausage', 'turkey', 'bacon', 'ham', 'fish', 'salmon', 'tuna', 'prawn', 'shrimp', 'cod', 'mince', 'steak']],
@@ -160,6 +201,8 @@ export class Taxonomy {
   private readonly byName = new Map<string, TaxonomyEntry>();
   /** Aliases: first entry wins, and a primary name always beats an alias. */
   private readonly byAlias = new Map<string, TaxonomyEntry>();
+  /** Lookups are repeated a lot when ranking the whole recipe catalogue. */
+  private readonly memo = new Map<string, TaxonomyEntry | undefined>();
 
   constructor(entries: TaxonomyEntry[] = ENTRIES) {
     entries.forEach(entry => this.add(entry));
@@ -168,6 +211,7 @@ export class Taxonomy {
   add(entry: TaxonomyEntry): void {
     const canonicalId = entry.canonicalId || toCanonicalId(entry.name);
     const stored = { ...entry, canonicalId };
+    this.memo.clear();
     this.byId.set(canonicalId, stored);
     const nameKey = normaliseIngredient(entry.name);
     if (nameKey) this.byName.set(nameKey, stored);
@@ -183,6 +227,14 @@ export class Taxonomy {
 
   /** Find the canonical entry for a label, or undefined if nothing matches well. */
   lookup(label: string): TaxonomyEntry | undefined {
+    if (this.memo.has(label)) return this.memo.get(label);
+    const entry = this.findEntry(label);
+    if (this.memo.size > 5000) this.memo.clear();
+    this.memo.set(label, entry);
+    return entry;
+  }
+
+  private findEntry(label: string): TaxonomyEntry | undefined {
     const key = normaliseIngredient(label);
     if (!key) return undefined;
     const exact = this.byName.get(key) || this.byAlias.get(key);

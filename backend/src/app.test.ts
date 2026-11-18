@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { fixtureRecipeSource, RECORDED_GENERATED_RECIPE, RECORDED_VISION_RESPONSE } from './__fixtures__/recipes';
+import { FIXTURE_RECIPES, fixtureRecipeSource, RECORDED_GENERATED_RECIPE, RECORDED_VISION_RESPONSE } from './__fixtures__/recipes';
 import { createApp, AppDeps } from './app';
 import { addDays } from './domain/expiry';
 import { Taxonomy } from './domain/taxonomy';
@@ -58,6 +58,25 @@ describe('POST /api/scan', () => {
     expect(res.body.items[2].shelfLife.source).toBe('category-fallback');
   });
 
+  it('uses printed dates and ripeness from the photo, and AI shelf life for unknown foods', async () => {
+    const vision: VisionClient = {
+      name: 'fixture',
+      identifyFoods: async () => parseDetections({ items: [
+        { label: 'milk', confidence: 0.9, printedDate: '2026-11-25' },
+        { label: 'banana', confidence: 0.9, ripeness: 'overripe', printedDate: '2026-02-31' },
+        { label: 'kefir', confidence: 0.8 },
+      ] }),
+    };
+    const text = textFixture({ name: 'Kefir', category: 'Dairy & Eggs', defaultStorage: 'FRIDGE', shelfLifeDays: { fridge: { min: 7, max: 14 } } });
+    const res = await request(build({ llm: { vision, text } })).post('/api/scan').set(DEVICE).send({ imageBase64: IMAGE }).expect(200);
+    const [milk, banana, kefir] = res.body.items;
+    expect(milk.printedDate).toBe('2026-11-25');
+    expect(banana).toMatchObject({ ripeness: 'overripe' });
+    expect(banana.printedDate).toBeUndefined();
+    expect(banana.shelfLife.ranges.pantry).toEqual({ min: 0, max: 3 }); // table says 2-7 when ripe
+    expect(kefir.shelfLife).toMatchObject({ source: 'ai-estimate', ranges: { fridge: { min: 7, max: 14 } } });
+  });
+
   it('validates the upload', async () => {
     const app = build();
     await request(app).post('/api/scan').set(DEVICE).send({}).expect(400);
@@ -89,6 +108,18 @@ describe('recipes', () => {
     expect(top.expiringIngredients.sort()).toEqual(['Baby Spinach', 'Eggs']);
     expect(top.score.total).toBeGreaterThan(res.body.recipes[1]?.score.total ?? 0);
     expect(res.body.suggestGenerate).toBe(false);
+  });
+
+  it('ranks the whole catalogue when the source can list it, skipping recipes that use nothing you own', async () => {
+    const source = fixtureRecipeSource();
+    const all = jest.fn(async () => FIXTURE_RECIPES);
+    const idsByIngredient = jest.spyOn(source, 'idsByIngredient');
+    const res = await request(build({ recipes: { ...source, all } })).post('/api/recipes/recommend').set(DEVICE).send({ inventory }).expect(200);
+    expect(all).toHaveBeenCalled();
+    expect(idsByIngredient).not.toHaveBeenCalled();
+    expect(res.body.recipes[0].title).toBe('Spinach Omelette');
+    res.body.recipes.forEach((r: { ingredients: Array<{ inventoryItemId?: string }> }) =>
+      expect(r.ingredients.some(i => i.inventoryItemId)).toBe(true));
   });
 
   it('applies the feasibility filter', async () => {

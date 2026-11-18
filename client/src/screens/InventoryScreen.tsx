@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import type { InventoryItem, StorageLocation } from '../../../shared/types';
+import { ExpiryDateField } from '../components/ExpiryDateField';
 import { Button, Chip, colours, EmptyState, StorageSelector, Stepper, styles as ui, UrgencyBadge } from '../components/ui';
 import { api } from '../data/api';
 import { EXPIRY_DISCLAIMER, estimateExpiry, isValidDate, todayString, urgencyOf } from '../domain/expiry';
@@ -58,7 +59,7 @@ const EditModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
   const [quantity, setQuantity] = useState(item.quantity);
   const [unit, setUnit] = useState(item.unit);
   const [storage, setStorage] = useState<StorageLocation>(item.storageLocation);
-  const [labelDate, setLabelDate] = useState(item.expirySource === 'label' ? item.expiryDate : '');
+  const [labelDate, setLabelDate] = useState<string | undefined>(item.expirySource === 'label' ? item.expiryDate : undefined);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -95,7 +96,7 @@ const EditModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={local.overlay}>
-        <View style={local.sheet}>
+        <ScrollView style={local.sheet} contentContainerStyle={local.sheetContent} keyboardShouldPersistTaps="handled">
           <Text style={local.sheetTitle}>Edit item</Text>
           <Text style={ui.label}>Name</Text>
           <TextInput style={ui.input} value={name} onChangeText={setName} />
@@ -107,20 +108,13 @@ const EditModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
           <Text style={ui.label}>Storage</Text>
           <StorageSelector value={storage} onChange={setStorage} />
           <Text style={ui.label}>Printed expiry date</Text>
-          <TextInput
-            style={ui.input}
-            value={labelDate}
-            onChangeText={text => setLabelDate(text.trim())}
-            placeholder="YYYY-MM-DD (leave empty to estimate)"
-            placeholderTextColor="#94a3b8"
-            keyboardType="numbers-and-punctuation"
-          />
+          <ExpiryDateField value={labelDate} onChange={setLabelDate} />
           <Text style={[ui.muted, { fontSize: 12, marginTop: 8 }]}>{EXPIRY_DISCLAIMER}</Text>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
             <Button title="Cancel" variant="ghost" onPress={onClose} style={{ flex: 1 }} />
             <Button title="Save" onPress={save} loading={saving} style={{ flex: 1 }} />
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -184,6 +178,7 @@ const local = StyleSheet.create({
   swipeAction: { width: 72, alignItems: 'center', justifyContent: 'center' },
   swipeText: { color: '#fff', fontSize: 12, fontWeight: '700', marginTop: 2 },
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
+  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, flexGrow: 0, maxHeight: '90%' },
+  sheetContent: { padding: 20, paddingBottom: 32 },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colours.text },
 });

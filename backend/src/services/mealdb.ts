@@ -5,7 +5,13 @@ export interface RecipeSource {
   /** Recipe IDs that use the given ingredient. */
   idsByIngredient(ingredient: string): Promise<string[]>;
   lookup(id: string): Promise<RecipeCandidate | null>;
+  /** The whole catalogue, if the source can list it; recommendations then rank every recipe. */
+  all?(): Promise<RecipeCandidate[]>;
 }
+
+const CATALOGUE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Retry sooner when some letters failed to load. */
+const PARTIAL_RETRY_MS = 10 * 60 * 1000;
 
 interface MealDbMeal {
   idMeal: string;
@@ -52,6 +58,7 @@ export const mealToCandidate = (meal: MealDbMeal): RecipeCandidate => {
 export class MealDbSource implements RecipeSource {
   private readonly cache = new Map<string, RecipeCandidate | null>();
   private readonly idCache = new Map<string, string[]>();
+  private catalogue?: { expires: number; promise: Promise<RecipeCandidate[]> };
 
   constructor(private readonly baseUrl = 'https://www.themealdb.com/api/json/v1/1') {}
 
@@ -78,5 +85,34 @@ export class MealDbSource implements RecipeSource {
     const candidate = meal ? mealToCandidate(meal) : null;
     this.cache.set(id, candidate);
     return candidate;
+  }
+
+  /** TheMealDB's free API has no "list all", so fetch every meal by first letter. Cached for a day. */
+  async all(): Promise<RecipeCandidate[]> {
+    if (this.catalogue && Date.now() < this.catalogue.expires) return this.catalogue.promise;
+    const promise = this.loadCatalogue();
+    this.catalogue = { expires: Date.now() + CATALOGUE_TTL_MS, promise };
+    promise.catch(() => { this.catalogue = undefined; });
+    return promise;
+  }
+
+  private async loadCatalogue(): Promise<RecipeCandidate[]> {
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    const meals = new Map<string, RecipeCandidate>();
+    let failed = 0;
+    for (let i = 0; i < letters.length; i += 6) {
+      const batch = await Promise.all(letters.slice(i, i + 6).map(letter =>
+        this.get<{ meals: MealDbMeal[] | null }>(`/search.php?f=${letter}`)
+          .then(data => data.meals || [])
+          .catch(() => { failed++; return [] as MealDbMeal[]; })));
+      batch.flat().forEach(meal => {
+        const candidate = mealToCandidate(meal);
+        this.cache.set(candidate.id, candidate);
+        meals.set(candidate.id, candidate);
+      });
+    }
+    if (meals.size === 0) throw new Error('TheMealDB catalogue could not be loaded');
+    if (failed > 0 && this.catalogue) this.catalogue.expires = Date.now() + PARTIAL_RETRY_MS;
+    return [...meals.values()];
   }
 }

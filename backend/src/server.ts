@@ -48,9 +48,10 @@ const main = async () => {
   const repository: UserDataRepository = firestore ? new FirestoreRepository(firestore) : new MemoryRepository();
   const llm = createLlmClients();
 
+  const recipes = new MealDbSource(process.env.MEALDB_BASE_URL || undefined);
   const app = createApp({
     llm,
-    recipes: new MealDbSource(process.env.MEALDB_BASE_URL || undefined),
+    recipes,
     repository,
     taxonomy,
     verifyToken: firestore ? async token => (await admin.auth().verifyIdToken(token)).uid : undefined,
@@ -63,6 +64,10 @@ const main = async () => {
     console.log(`SmartFoodTracker backend on port ${PORT}`);
     console.log(`  vision: ${llm.vision?.name || 'not configured'} | text: ${llm.text?.name || 'not configured'}`);
     console.log(`  storage: ${firestore ? 'Firestore' : 'in-memory (data is lost on restart)'} | taxonomy: ${taxonomy.size} ingredients`);
+    // Warm the recipe catalogue so the first recommendation is fast.
+    recipes.all()
+      .then(list => console.log(`  recipes: ${list.length} loaded from TheMealDB`))
+      .catch(error => console.warn('  recipes: catalogue not loaded yet, will search by ingredient:', (error as Error).message));
   });
 };
 
