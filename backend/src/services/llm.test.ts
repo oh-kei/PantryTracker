@@ -42,6 +42,17 @@ describe('OpenRouterClient', () => {
   });
 });
 
+describe('OpenRouterClient text fallback', () => {
+  it('falls back to the next text model when one is rate-limited', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'Provider returned error', code: 429 } }), { status: 429 }))
+      .mockResolvedValueOnce(okResponse('{"title":"ok"}'));
+    const client = new OpenRouterClient('key', ['busy-text', 'backup-text'], ['v'], fetchImpl as unknown as typeof fetch);
+    await expect(client.generateJson('sys', 'prompt')).resolves.toEqual({ title: 'ok' });
+    expect(fetchImpl.mock.calls.map(call => JSON.parse(call[1].body).model)).toEqual(['busy-text', 'backup-text']);
+  });
+});
+
 describe('createLlmClients', () => {
   it('prefers Gemini, falls back to OpenRouter for vision and text', () => {
     expect(createLlmClients({})).toEqual({ vision: null, text: null });
@@ -52,5 +63,9 @@ describe('createLlmClients', () => {
     expect(both.vision?.name).toBe('gemini');
     const custom = createLlmClients({ OPENROUTER_API_KEY: 'k', OPENROUTER_VISION_MODEL: ' a , b ' }) as unknown as { vision: { visionModels: string[] } };
     expect(custom.vision.visionModels).toEqual(['a', 'b']);
+    const text = createLlmClients({ OPENROUTER_API_KEY: 'k', OPENROUTER_MODEL: 'x, y' }) as unknown as { text: { textModels: string[] } };
+    expect(text.text.textModels).toEqual(['x', 'y']);
+    const defaults = createLlmClients({ OPENROUTER_API_KEY: 'k' }) as unknown as { text: { textModels: string[] } };
+    expect(defaults.text.textModels.length).toBeGreaterThan(1);
   });
 });

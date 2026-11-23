@@ -163,6 +163,12 @@ const CATEGORY_FALLBACK: Record<FoodCategory, { storage: StorageLocation; ranges
   Other: { storage: 'FRIDGE', ranges: { pantry: { min: 3, max: 7 }, fridge: { min: 3, max: 7 }, freezer: { min: 60, max: 90 } } },
 };
 
+/** Words too broad to identify a food from a partial match. */
+const GENERIC_WORDS = new Set([
+  'fruit', 'vegetable', 'veg', 'meat', 'fish', 'seafood', 'nut', 'seed', 'herb', 'spice', 'green', 'leaf',
+  'sauce', 'oil', 'juice', 'pepper', 'cream', 'berry', 'bean', 'powder', 'paste', 'mix', 'drink', 'snack', 'food',
+]);
+
 export const FOOD_CATEGORIES = Object.keys(CATEGORY_FALLBACK) as FoodCategory[];
 
 const CATEGORY_KEYWORDS: Array<[FoodCategory, string[]]> = [
@@ -239,12 +245,15 @@ export class Taxonomy {
     if (!key) return undefined;
     const exact = this.byName.get(key) || this.byAlias.get(key);
     if (exact) return exact;
+    // Generic one-word names/aliases ("fruit", "pepper", "cream") are only used for
+    // exact matches; otherwise "dragon fruit" would become Dried Fruit.
     // Prefer the longest name that is a whole-word subset of the label
     // ("chopped cherry tomatoes" -> tomato, "chicken breast fillet" -> chicken breast),
     // trying primary names before aliases.
     for (const map of [this.byName, this.byAlias]) {
       let best: { entry: TaxonomyEntry; length: number } | undefined;
       for (const [name, entry] of map) {
+        if (GENERIC_WORDS.has(name)) continue;
         if (ingredientsMatch(name, key) && key.split(' ').length >= name.split(' ').length) {
           if (!best || name.length > best.length) best = { entry, length: name.length };
         }

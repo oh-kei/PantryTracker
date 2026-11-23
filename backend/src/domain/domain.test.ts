@@ -53,6 +53,20 @@ describe('taxonomy', () => {
     expect(t.lookup('ripe greek yogurt pot')?.name).toBe('Greek Yogurt');
   });
 
+  it('does not map a food onto a generic word like "fruit" or "pepper"', () => {
+    const t = new Taxonomy();
+    const entry = (name: string, aliases: string[]) => ({
+      canonicalId: '', name, category: 'Pantry & Dry Goods' as const, defaultStorage: 'PANTRY' as const, aliases,
+      shelfLifeDays: { pantry: { min: 180, max: 365 }, fridge: null, freezer: null },
+    });
+    t.add(entry('Dried Fruit', ['dry fruit']));
+    t.add(entry('Black Pepper', ['pepper']));
+    expect(t.lookup('dragon fruit')).toBeUndefined();
+    expect(t.lookup('jalapeno pepper')).toBeUndefined();
+    expect(t.lookup('pepper')?.name).not.toBe(undefined); // exact match still works
+    expect(t.lookup('dried fruit')?.name).toBe('Dried Fruit');
+  });
+
   it('falls back to category ranges for unknown items', () => {
     const estimate = taxonomy.estimate('kefir', 'Dairy & Eggs');
     expect(estimate.source).toBe('category-fallback');

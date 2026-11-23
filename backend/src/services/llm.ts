@@ -113,11 +113,29 @@ export class OpenRouterClient implements TextClient, VisionClient {
 
   constructor(
     private readonly apiKey: string,
-    private readonly textModel: string,
-    /** One or more image-capable models, tried in order (free models are often rate-limited). */
+    /** Text models, tried in order (free models are often rate-limited). */
+    textModels: string | string[],
+    /** One or more image-capable models, tried in order. */
     private readonly visionModels: string[] = DEFAULT_OPENROUTER_VISION_MODELS,
     private readonly fetchImpl: typeof fetch = fetch,
-  ) {}
+  ) {
+    this.textModels = Array.isArray(textModels) ? textModels : [textModels];
+  }
+
+  private readonly textModels: string[];
+
+  /** Run `attempt` with each model until one succeeds; rethrow the last error. */
+  private async firstWorking<T>(models: string[], attempt: (model: string) => Promise<T>): Promise<T> {
+    let lastError: Error = new Error('No OpenRouter model configured');
+    for (const model of models) {
+      try {
+        return await attempt(model);
+      } catch (error) {
+        lastError = error as Error;
+      }
+    }
+    throw lastError;
+  }
 
   private async chat(model: string, messages: Array<{ role: 'system' | 'user'; content: ChatContent }>, temperature: number): Promise<unknown> {
     const response = await this.fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
@@ -147,10 +165,10 @@ export class OpenRouterClient implements TextClient, VisionClient {
   }
 
   async generateJson(system: string, prompt: string): Promise<unknown> {
-    return this.chat(this.textModel, [
+    return this.firstWorking(this.textModels, model => this.chat(model, [
       { role: 'system', content: system },
       { role: 'user', content: prompt },
-    ], 0.3);
+    ], 0.3));
   }
 
   /**
@@ -158,27 +176,25 @@ export class OpenRouterClient implements TextClient, VisionClient {
    * Falls through the configured models until one answers.
    */
   async identifyFoods(imageBase64: string, mimeType: string): Promise<RawDetection[]> {
-    let lastError: Error = new Error('No OpenRouter vision model configured');
-    for (const model of this.visionModels) {
-      try {
-        const result = await this.chat(model, [{
-          role: 'user',
-          content: [
-            { type: 'text', text: VISION_PROMPT },
-            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-          ],
-        }], 0.1);
-        return parseDetections(result);
-      } catch (error) {
-        lastError = error as Error;
-      }
-    }
-    throw lastError;
+    return this.firstWorking(this.visionModels, async model => parseDetections(await this.chat(model, [{
+      role: 'user',
+      content: [
+        { type: 'text', text: VISION_PROMPT },
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+      ],
+    }], 0.1)));
   }
 }
 
 /** Free OpenRouter models that accept images. Override with OPENROUTER_VISION_MODEL (comma-separated). */
 export const DEFAULT_OPENROUTER_VISION_MODELS = ['nvidia/nemotron-3.5-super-vl:free', 'google/gemma-4-31b-it:free'];
+/** Free text models, tried in order. Override with OPENROUTER_MODEL (comma-separated). The vision models handle text too. */
+export const DEFAULT_OPENROUTER_TEXT_MODELS = ['baidu/ernie-5.5-flash-preview:free', ...DEFAULT_OPENROUTER_VISION_MODELS];
+
+const modelList = (value: string | undefined, fallback: string[]): string[] => {
+  const list = (value || '').split(',').map(m => m.trim()).filter(Boolean);
+  return list.length > 0 ? list : fallback;
+};
 
 export interface LlmClients {
   vision: VisionClient | null;
@@ -192,10 +208,8 @@ export const createLlmClients = (env: NodeJS.ProcessEnv = process.env): LlmClien
   const openRouter = env.OPENROUTER_API_KEY
     ? new OpenRouterClient(
       env.OPENROUTER_API_KEY,
-      env.OPENROUTER_MODEL || 'baidu/ernie-5.5-flash-preview:free',
-      env.OPENROUTER_VISION_MODEL
-        ? env.OPENROUTER_VISION_MODEL.split(',').map(m => m.trim()).filter(Boolean)
-        : DEFAULT_OPENROUTER_VISION_MODELS,
+      modelList(env.OPENROUTER_MODEL, DEFAULT_OPENROUTER_TEXT_MODELS),
+      modelList(env.OPENROUTER_VISION_MODEL, DEFAULT_OPENROUTER_VISION_MODELS),
     )
     : null;
   return { vision: gemini || openRouter, text: gemini || openRouter };

@@ -286,12 +286,18 @@ export const createApp = (deps: AppDeps) => {
     if (!llm.text) throw new HttpError(503, 'Recipe generation is not configured');
     inventory.forEach(item => { if (!item.canonicalId) item.canonicalId = taxonomy.canonicalIdFor(item.name); });
 
+    let raw: unknown;
+    try {
+      raw = await llm.text.generateJson(RECIPE_SYSTEM_PROMPT, buildRecipePrompt(inventory, preferences, date));
+    } catch (error) {
+      console.warn('Recipe generation failed:', (error as Error).message);
+      throw new HttpError(503, 'The AI recipe service is busy right now. Try again in a minute.');
+    }
     let candidate: RecipeCandidate;
     try {
-      const raw = await llm.text.generateJson(RECIPE_SYSTEM_PROMPT, buildRecipePrompt(inventory, preferences, date));
       candidate = validateGeneratedRecipe(raw, `generated_${Date.now()}`);
     } catch (error) {
-      throw new HttpError(502, `Generated recipe was rejected: ${(error as Error).message}`);
+      throw new HttpError(502, `Generated recipe was rejected: ${(error as Error).message}. Try again.`);
     }
     if (!isRecipeFeasible(candidate.ingredients.map(i => i.name), preferences)) {
       throw new HttpError(502, 'Generated recipe conflicted with your dietary constraints; try again');
