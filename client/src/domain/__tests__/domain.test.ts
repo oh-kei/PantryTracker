@@ -1,3 +1,4 @@
+import { resolveApiBaseUrl } from '../../config';
 import type { InventoryItem, RankedRecipe } from '../../../../shared/types';
 import { addDays, dateToString, daysUntil, describeExpiry, isValidDate, relativeDays, stringToLocalDate, urgencyOf } from '../expiry';
 import { applyUsage, DraftItem, draftFromDetection, draftToItem, groupByStorage, mergeDrafts, plannedUsage } from '../inventory';
@@ -107,5 +108,18 @@ describe('manual date entry', () => {
     });
     expect(draft).toMatchObject({ labelDate: '2026-11-30', labelFromPhoto: true, estimateSource: 'reference' });
     expect(draftToItem(draft, '2026-11-18')).toMatchObject({ expiryDate: '2026-11-30', expirySource: 'label' });
+  });
+});
+
+describe('backend address', () => {
+  it('follows the laptop Expo Go loaded from, so changing Wi-Fi needs no .env edit', () => {
+    expect(resolveApiBaseUrl('http://10.89.180.23:4000/api', '10.89.195.172:8081')).toBe('http://10.89.195.172:4000/api');
+    expect(resolveApiBaseUrl(undefined, '192.168.1.5:8081')).toBe('http://192.168.1.5:4000/api');
+  });
+
+  it('keeps a deployed server, and handles tunnels and emulators', () => {
+    expect(resolveApiBaseUrl('https://api.example.com/api/', '10.0.0.4:8081')).toBe('https://api.example.com/api');
+    expect(resolveApiBaseUrl('http://10.89.180.23:4000/api', 'abc-anonymous-8081.exp.direct')).toBe('http://10.89.180.23:4000/api');
+    expect(resolveApiBaseUrl(undefined, undefined)).toBe('http://10.0.2.2:4000/api');
   });
 });
