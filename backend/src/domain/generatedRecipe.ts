@@ -1,4 +1,4 @@
-import type { RecipeInventoryItem, UserPreferences } from '../../../shared/types';
+import type { GenerateOptions, MealType, RecipeInventoryItem, UserPreferences } from '../../../shared/types';
 import { urgencyTier } from './expiry';
 import type { RecipeCandidate } from './ranking';
 
@@ -17,21 +17,55 @@ Return ONLY a JSON object matching this schema, with no extra keys and no prose:
 ${GENERATED_RECIPE_SCHEMA}
 Rules: use as many of the user's URGENT and WARNING items as is sensible; only use inventory items or common staples
 (salt, pepper, oil, water) unless unavoidable; never use an ingredient that breaks the user's allergens or diet;
-keep steps short, practical and safe (cook meat, poultry and eggs thoroughly).`;
+keep steps short, practical and safe (cook meat, poultry and eggs thoroughly).
+Items marked "mustUse": true MUST be main ingredients of the recipe. Respect any requested meal type and time limit.`;
 
-/** Build the user prompt. Only ingredient names and urgency are shared with the LLM. */
+export const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+export const TIME_LIMITS = [15, 30, 60];
+
+/**
+ * Build the user prompt. Only ingredient names and urgency are shared with the LLM.
+ * `options` narrows which items are offered and adds must-use items, meal type and time.
+ */
 export const buildRecipePrompt = (
   inventory: RecipeInventoryItem[],
   preferences: Partial<UserPreferences>,
   today: string,
+  options: GenerateOptions = {},
 ): string => {
-  const items = inventory.map(item => ({ name: item.name, urgency: urgencyTier(item.expiryDate, today) }));
+  const mustUse = new Set(options.mustUse || []);
+  const include = options.include ? new Set([...options.include, ...mustUse]) : null;
+  const items = inventory
+    .filter(item => !include || include.has(item.id))
+    .map(item => ({ name: item.name, urgency: urgencyTier(item.expiryDate, today), ...(mustUse.has(item.id) ? { mustUse: true } : {}) }));
   const constraints = {
     allergens: preferences.allergens || [],
     diet: preferences.diet || 'none',
     favouriteCuisines: preferences.favouriteCuisines || [],
   };
-  return `Inventory: ${JSON.stringify(items)}\nConstraints: ${JSON.stringify(constraints)}\nCreate one recipe.`;
+  const request = [
+    options.mealType ? `a ${options.mealType} dish` : null,
+    options.maxMinutes ? `ready in ${options.maxMinutes} minutes or less in total` : null,
+  ].filter(Boolean).join(', ');
+  return `Inventory: ${JSON.stringify(items)}
+Constraints: ${JSON.stringify(constraints)}
+Create one recipe${request ? `: ${request}` : ''}.`;
+};
+
+/** Read options from a request body, ignoring anything unexpected. */
+export const parseGenerateOptions = (value: unknown, inventoryIds: string[]): GenerateOptions => {
+  if (!value || typeof value !== 'object') return {};
+  const v = value as Record<string, unknown>;
+  const known = new Set(inventoryIds);
+  const ids = (x: unknown) => (Array.isArray(x) ? x.filter((id): id is string => typeof id === 'string' && known.has(id)) : undefined);
+  const options: GenerateOptions = {};
+  const include = ids(v.include);
+  const mustUse = ids(v.mustUse);
+  if (include) options.include = include;
+  if (mustUse?.length) options.mustUse = mustUse.slice(0, 5);
+  if (MEAL_TYPES.includes(v.mealType as MealType)) options.mealType = v.mealType as MealType;
+  if (TIME_LIMITS.includes(v.maxMinutes as number)) options.maxMinutes = v.maxMinutes as number;
+  return options;
 };
 
 const isNonEmptyString = (value: unknown, max = 500): value is string =>

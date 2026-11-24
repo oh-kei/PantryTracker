@@ -1,9 +1,9 @@
 import { useNavigation } from '@react-navigation/native';
 import React from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import type { RankedRecipe } from '../../../shared/types';
 import { Button, Card, Chip, colours, EmptyState, styles as ui } from '../components/ui';
-import { useGenerateRecipe, useRecommendations } from '../hooks/useRecipes';
+import { useRecommendations } from '../hooks/useRecipes';
 import { useInventoryStore } from '../store/inventoryStore';
 import { useSessionStore } from '../store/sessionStore';
 
@@ -45,13 +45,7 @@ export default function RecipeListScreen() {
   const itemCount = useInventoryStore(s => s.items.length);
   const generated = useSessionStore(s => s.generated);
   const recommendations = useRecommendations();
-  const generate = useGenerateRecipe();
   const recipes = [...generated, ...(recommendations.data?.recipes || [])];
-
-  const onGenerate = () => generate.mutate(undefined, {
-    onSuccess: recipe => navigation.navigate('RecipeDetail', { recipeId: recipe.id }),
-    onError: error => Alert.alert('Could not generate a recipe', (error as Error).message),
-  });
 
   const header = (
     <View>
@@ -65,11 +59,11 @@ export default function RecipeListScreen() {
       )}
       {itemCount > 0 && (
         <Button
-          title={generate.isPending ? 'Generating…' : 'Generate a recipe from my pantry'}
+          testID="open-generate"
+          title="Generate a recipe from my pantry"
           icon="sparkles-outline"
           variant="ai"
-          loading={generate.isPending}
-          onPress={onGenerate}
+          onPress={() => navigation.navigate('Generate')}
           style={{ marginTop: 12, marginBottom: 4 }}
         />
       )}

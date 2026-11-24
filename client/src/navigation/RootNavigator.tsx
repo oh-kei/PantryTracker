@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import { colours } from '../components/ui';
 import ConfirmationScreen from '../screens/ConfirmationScreen';
+import GenerateScreen from '../screens/GenerateScreen';
 import HomeScreen from '../screens/HomeScreen';
 import InventoryScreen from '../screens/InventoryScreen';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
@@ -49,6 +50,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan food', headerShown: false }} />
       <Stack.Screen name="Confirm" component={ConfirmationScreen} options={{ title: 'Confirm items' }} />
       <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={{ title: 'Recipe' }} />
+      <Stack.Screen name="Generate" component={GenerateScreen} options={{ title: 'Generate a recipe' }} />
     </Stack.Navigator>
   );
 }

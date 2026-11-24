@@ -195,6 +195,19 @@ export interface RecommendResponse {
   suggestGenerate: boolean;
 }
 
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+/** Choices made on the "Generate a recipe" screen. */
+export interface GenerateOptions {
+  /** Inventory item IDs the AI may use. Omitted means everything. */
+  include?: string[];
+  /** Inventory item IDs the recipe must be built around. */
+  mustUse?: string[];
+  mealType?: MealType;
+  /** Upper limit on total prep + cooking time. */
+  maxMinutes?: number;
+}
+
 export interface SubstitutionRequest {
   missing: string[];
   inventory: RecipeInventoryItem[];

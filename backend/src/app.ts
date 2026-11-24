@@ -13,7 +13,7 @@ import type {
 } from '../../shared/types';
 import { ALLERGEN_RULES, isRecipeFeasible } from './domain/dietary';
 import { expiryWindow, todayString } from './domain/expiry';
-import { buildRecipePrompt, RECIPE_SYSTEM_PROMPT, validateGeneratedRecipe } from './domain/generatedRecipe';
+import { buildRecipePrompt, parseGenerateOptions, RECIPE_SYSTEM_PROMPT, validateGeneratedRecipe } from './domain/generatedRecipe';
 import { DEFAULT_WEIGHTS, GENERATE_SUGGESTION_THRESHOLD, rankRecipes, RankingWeights, RecipeCandidate, scoreRecipe } from './domain/ranking';
 import { adjustForRipeness, plausiblePrintedDate } from './domain/shelfLife';
 import { suggestSubstitutions, validateLlmSubstitutions } from './domain/substitution';
@@ -298,12 +298,14 @@ export const createApp = (deps: AppDeps) => {
     const preferences = parsePreferences(req.body?.preferences);
     const date = today();
     if (inventory.length === 0) throw new HttpError(400, 'Add some inventory items first');
+    const options = parseGenerateOptions(req.body?.options, inventory.map(item => item.id));
+    if (options.include && options.include.length === 0 && !options.mustUse) throw new HttpError(400, 'Pick at least one ingredient');
     if (!llm.text) throw new HttpError(503, 'Recipe generation is not configured');
     inventory.forEach(item => { if (!item.canonicalId) item.canonicalId = taxonomy.canonicalIdFor(item.name); });
 
     let raw: unknown;
     try {
-      raw = await llm.text.generateJson(RECIPE_SYSTEM_PROMPT, buildRecipePrompt(inventory, preferences, date));
+      raw = await llm.text.generateJson(RECIPE_SYSTEM_PROMPT, buildRecipePrompt(inventory, preferences, date, options));
     } catch (error) {
       console.warn('Recipe generation failed:', (error as Error).message);
       throw new HttpError(503, 'The AI recipe service is busy right now. Try again in a minute.');

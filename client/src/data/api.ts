@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
+  GenerateOptions,
   InventoryItem,
   RankedRecipe,
   RecipeInventoryItem,
@@ -103,8 +104,8 @@ export const api = {
   recommend: (inventory: RecipeInventoryItem[], preferences: UserPreferences) =>
     post<RecommendResponse>('/recipes/recommend', { inventory, preferences }, 30_000),
 
-  generate: async (inventory: RecipeInventoryItem[], preferences: UserPreferences) =>
-    (await post<{ recipe: RankedRecipe }>('/recipes/generate', { inventory, preferences }, 60_000)).recipe,
+  generate: async (inventory: RecipeInventoryItem[], preferences: UserPreferences, options: GenerateOptions = {}) =>
+    (await post<{ recipe: RankedRecipe }>('/recipes/generate', { inventory, preferences, options }, 60_000)).recipe,
 
   substitutions: async (missing: string[], inventory: RecipeInventoryItem[], preferences: UserPreferences, recipeTitle?: string) =>
     (await post<SubstitutionResponse>('/recipes/substitutions', { missing, inventory, preferences, recipeTitle }, 30_000)).substitutions,

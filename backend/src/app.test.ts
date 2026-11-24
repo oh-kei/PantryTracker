@@ -152,6 +152,29 @@ describe('recipes', () => {
     expect(prompt).not.toContain('expiryDate');
   });
 
+  it('follows the generate options: only ticked items, must-use items, meal type and time', async () => {
+    const text = textFixture(RECORDED_GENERATED_RECIPE);
+    const app = build({ llm: { vision: null, text } });
+    const pantry = [
+      { id: 'a', name: 'Avocado', expiryDate: addDays(TODAY, 1) },
+      { id: 'b', name: 'Spinach', expiryDate: addDays(TODAY, 9) },
+      { id: 'c', name: 'Chicken Breast', expiryDate: addDays(TODAY, 2) },
+    ];
+    const res = await request(app).post('/api/recipes/generate').set(DEVICE).send({
+      inventory: pantry,
+      options: { include: ['a'], mustUse: ['c', 'unknown'], mealType: 'breakfast', maxMinutes: 15, extra: 'ignored' },
+    }).expect(200);
+    const prompt = (text.generateJson as jest.Mock).mock.calls[0][1] as string;
+    expect(prompt).toContain('"name":"Avocado"');
+    expect(prompt).toContain('"name":"Chicken Breast","urgency":"URGENT","mustUse":true');
+    expect(prompt).not.toContain('Spinach');
+    expect(prompt).toContain('a breakfast dish, ready in 15 minutes or less in total');
+    // Scored against the whole pantry: spinach still counts as owned.
+    expect(res.body.recipe.missingIngredients).toEqual(['Bread']);
+
+    await request(app).post('/api/recipes/generate').set(DEVICE).send({ inventory: pantry, options: { include: [] } }).expect(400);
+  });
+
   it('rejects invalid generated recipes', async () => {
     const app = build({ llm: { vision: null, text: textFixture({ title: 'Broken' }) } });
     await request(app).post('/api/recipes/generate').set(DEVICE).send({ inventory }).expect(502);

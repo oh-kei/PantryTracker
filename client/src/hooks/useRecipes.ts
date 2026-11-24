@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
-import type { RankedRecipe } from '../../../shared/types';
+import type { GenerateOptions, RankedRecipe } from '../../../shared/types';
 import { api } from '../data/api';
 import { toRecipeInventory } from '../domain/inventory';
 import { useInventoryStore } from '../store/inventoryStore';
@@ -41,7 +41,7 @@ export const useGenerateRecipe = () => {
   const { inventory, preferences } = useRecipeInputs();
   const addGenerated = useSessionStore(s => s.addGenerated);
   return useMutation({
-    mutationFn: () => api.generate(inventory, preferences),
+    mutationFn: (options: GenerateOptions = {}) => api.generate(inventory, preferences, options),
     onSuccess: (recipe: RankedRecipe) => addGenerated(recipe),
   });
 };

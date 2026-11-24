@@ -9,12 +9,13 @@ import { useInventoryStore } from '../../store/inventoryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { api } from '../../data/api';
 import ConfirmationScreen from '../ConfirmationScreen';
+import GenerateScreen from '../GenerateScreen';
 import InventoryScreen from '../InventoryScreen';
 
 jest.mock('../../data/api', () => ({
-  api: { shelfLife: jest.fn(), suggestIngredients: jest.fn() },
+  api: { shelfLife: jest.fn(), suggestIngredients: jest.fn(), generate: jest.fn() },
 }));
-const mockApi = api as unknown as { shelfLife: jest.Mock; suggestIngredients: jest.Mock };
+const mockApi = api as unknown as { shelfLife: jest.Mock; suggestIngredients: jest.Mock; generate: jest.Mock };
 
 const today = todayString();
 const Stack = createNativeStackNavigator();
@@ -28,6 +29,7 @@ const renderScreen = (component: React.ComponentType, params?: object) =>
           <Stack.Screen name="Screen" component={component} initialParams={params} />
           <Stack.Screen name="Tabs" component={Blank} />
           <Stack.Screen name="Scan" component={Blank} />
+          <Stack.Screen name="RecipeDetail" component={Blank} />
         </Stack.Navigator>
       </NavigationContainer>
     </QueryClientProvider>,
@@ -40,7 +42,7 @@ const item = (id: string, name: string, days: number, storageLocation: Inventory
 
 beforeEach(() => {
   useInventoryStore.setState({ items: [], revision: 0, recent: [] });
-  useSessionStore.setState({ scan: null });
+  useSessionStore.setState({ scan: null, generateChoices: { excluded: [], mustUse: [] } });
 });
 
 describe('InventoryScreen', () => {
@@ -170,5 +172,30 @@ describe('ConfirmationScreen manual entry', () => {
     await fireEvent.press(screen.getByTestId('confirm-save'));
     await waitFor(() => expect(useInventoryStore.getState().items).toHaveLength(1));
     expect(useInventoryStore.getState().items[0]).toMatchObject({ name: 'Chicken Breast', quantity: 500, unit: 'g', expiryDate: addDays(today, 2) });
+  });
+});
+
+describe('GenerateScreen', () => {
+  it('sends only the ticked ingredients, the starred ones, meal type and time', async () => {
+    mockApi.generate.mockReset().mockResolvedValue({ id: 'generated_1', title: 'Breakfast Hash' });
+    useInventoryStore.setState({ items: [item('a', 'Avocado', 1), item('b', 'Bacon', 3), item('c', 'Rice', 200, 'PANTRY')] });
+    await renderScreen(GenerateScreen);
+    expect(screen.getByText('Generate with 3 ingredients')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Expiring soon only'));
+    expect(screen.getByText('Generate with 2 ingredients')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Deselect all'));
+    expect(screen.getByTestId('generate')).toBeDisabled();
+    await fireEvent.press(screen.getByTestId('must-Bacon')); // starring also ticks it
+    await fireEvent.press(screen.getByTestId('include-Avocado'));
+    await fireEvent.press(screen.getByText('Breakfast'));
+    await fireEvent.press(screen.getByText('15 min'));
+    expect(screen.getByText('Must use: Bacon')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('generate'));
+    await waitFor(() => expect(mockApi.generate).toHaveBeenCalledTimes(1));
+    expect(mockApi.generate.mock.calls[0][2]).toEqual({ include: ['a', 'b'], mustUse: ['b'], mealType: 'breakfast', maxMinutes: 15 });
+    // The choices are remembered for next time.
+    expect(useSessionStore.getState().generateChoices).toMatchObject({ excluded: ['c'], mustUse: ['b'], mealType: 'breakfast' });
   });
 });

@@ -13,6 +13,8 @@ export type RootStackParamList = {
   /** Shows the session's scan results; `manual` opens it empty for manual entry. */
   Confirm: { manual?: boolean } | undefined;
   RecipeDetail: { recipeId: string };
+  /** Options for an AI recipe: which ingredients, must-use items, meal type and time. */
+  Generate: undefined;
 };
 
 declare global {
