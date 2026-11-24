@@ -7,11 +7,14 @@ import { useGenerateRecipe, useRecommendations } from '../hooks/useRecipes';
 import { useInventoryStore } from '../store/inventoryStore';
 import { useSessionStore } from '../store/sessionStore';
 
+/** TheMealDB serves a small preview size; other sources' images are used as they are. */
+const thumbFor = (url: string) => (url.includes('themealdb.com') ? `${url}/preview` : url);
+
 export const RecipeCard = ({ recipe, onPress }: { recipe: RankedRecipe; onPress: () => void }) => (
   <Pressable onPress={onPress} accessibilityRole="button" testID={`recipe-${recipe.id}`}>
     <Card style={local.card}>
       <View style={local.cardTop}>
-        {recipe.thumbnail ? <Image source={{ uri: `${recipe.thumbnail}/preview` }} style={local.thumb} /> : null}
+        {recipe.thumbnail ? <Image source={{ uri: thumbFor(recipe.thumbnail) }} style={local.thumb} /> : null}
         <View style={{ flex: 1 }}>
           <Text style={local.title}>{recipe.title}</Text>
           <Text style={local.desc} numberOfLines={1}>

@@ -39,7 +39,7 @@ const item = (id: string, name: string, days: number, storageLocation: Inventory
 });
 
 beforeEach(() => {
-  useInventoryStore.setState({ items: [], revision: 0 });
+  useInventoryStore.setState({ items: [], revision: 0, recent: [] });
   useSessionStore.setState({ scan: null });
 });
 
@@ -155,5 +155,20 @@ describe('ConfirmationScreen manual entry', () => {
     await fireEvent.changeText(inputs[1], 'Chicken Breast');
     await fireEvent.press(await screen.findByText('Merge'));
     expect(screen.getAllByPlaceholderText('Food name, e.g. spinach')).toHaveLength(1);
+  });
+
+  it('remembers what was added and re-adds it with one tap', async () => {
+    useInventoryStore.getState().addItems([{ ...item('chicken_breast', 'Chicken Breast', 2), category: 'Meat & Seafood', quantity: 500, unit: 'g' }]);
+    useInventoryStore.setState({ items: [] });
+    expect(useInventoryStore.getState().recent.map(f => f.name)).toEqual(['Chicken Breast']);
+
+    await renderScreen(ConfirmationScreen, { manual: true });
+    expect(screen.getByText('Recently added')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('recent-Chicken Breast'));
+    await waitFor(() => expect(screen.getByText(/Estimated expiry/)).toBeTruthy());
+    expect(screen.queryByText('Recently added')).toBeNull(); // already on the list
+    await fireEvent.press(screen.getByTestId('confirm-save'));
+    await waitFor(() => expect(useInventoryStore.getState().items).toHaveLength(1));
+    expect(useInventoryStore.getState().items[0]).toMatchObject({ name: 'Chicken Breast', quantity: 500, unit: 'g', expiryDate: addDays(today, 2) });
   });
 });

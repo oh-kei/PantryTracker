@@ -2,7 +2,7 @@ import { resolveApiBaseUrl } from '../../config';
 import type { InventoryItem, RankedRecipe } from '../../../../shared/types';
 import { addDays, dateToString, daysUntil, describeExpiry, isValidDate, relativeDays, stringToLocalDate, urgencyOf } from '../expiry';
 import { quantityForUnit, stepFor } from '../units';
-import { applyUsage, DraftItem, draftFromDetection, draftToItem, duplicateOf, groupByStorage, mergeDrafts, plannedUsage } from '../inventory';
+import { applyUsage, DraftItem, draftFromDetection, draftToItem, duplicateOf, groupByStorage, mergeDrafts, MAX_RECENT, plannedUsage, rememberRecent } from '../inventory';
 
 const TODAY = '2026-11-15';
 
@@ -147,5 +147,21 @@ describe('units and duplicates', () => {
     expect(duplicateOf(drafts, drafts[0])).toBeUndefined();
     expect(duplicateOf(drafts, drafts[2])?.key).toBe('a');
     expect(duplicateOf(drafts, drafts[3])).toBeUndefined(); // no ID yet, so only an identical name would count
+  });
+});
+
+describe('recently added foods', () => {
+  const food = (name: string, canonicalId = name.toLowerCase()) => ({
+    id: name, name, canonicalId, category: 'Produce' as const, storageLocation: 'FRIDGE' as const, quantity: 1, unit: 'unit',
+    buyDate: '2026-11-15', expiryEarliest: '2026-11-18', expiryDate: '2026-11-20', expirySource: 'estimate' as const,
+  });
+  it('keeps the newest first, one per food, capped', () => {
+    let recent = rememberRecent([], [food('Milk'), food('Eggs')]);
+    expect(recent.map(f => f.name)).toEqual(['Eggs', 'Milk']);
+    recent = rememberRecent(recent, [food('Whole milk', 'milk')]);
+    expect(recent.map(f => f.name)).toEqual(['Whole milk', 'Eggs']);
+    recent = rememberRecent(recent, Array.from({ length: 20 }, (_, i) => food(`Food ${i}`)));
+    expect(recent).toHaveLength(MAX_RECENT);
+    expect(recent[0].name).toBe('Food 19');
   });
 });

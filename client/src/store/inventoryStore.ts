@@ -2,13 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { InventoryItem } from '../../../shared/types';
-import { applyUsage, Usage } from '../domain/inventory';
+import { applyUsage, RecentFood, rememberRecent, Usage } from '../domain/inventory';
 
 interface InventoryState {
   items: InventoryItem[];
   /** Bumped on every local change, so the sync hook knows what to push. */
   revision: number;
   hydrated: boolean;
+  /** Foods added recently, newest first: quick-add shortcuts for manual entry. */
+  recent: RecentFood[];
   addItems: (items: InventoryItem[]) => void;
   updateItem: (id: string, patch: Partial<InventoryItem>) => void;
   removeItem: (id: string) => void;
@@ -29,18 +31,19 @@ export const useInventoryStore = create<InventoryState>()(
       items: [],
       revision: 0,
       hydrated: false,
-      addItems: items => set(state => bump(state, [...state.items, ...items])),
+      recent: [],
+      addItems: items => set(state => ({ ...bump(state, [...state.items, ...items]), recent: rememberRecent(state.recent, items) })),
       updateItem: (id, patch) => set(state => bump(state, state.items.map(item => (item.id === id ? { ...item, ...patch } : item)))),
       removeItem: id => set(state => bump(state, state.items.filter(item => item.id !== id))),
       consume: (id, amount = 1) => set(state => bump(state, applyUsage(state.items, [{ itemId: id, amount }]))),
       applyCooking: usages => set(state => bump(state, applyUsage(state.items, usages))),
       replaceFromServer: items => set({ items }),
-      clear: () => set(state => bump(state, [])),
+      clear: () => set(state => ({ ...bump(state, []), recent: [] })),
     }),
     {
       name: 'smartfood.inventory',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: state => ({ items: state.items, revision: state.revision }),
+      partialize: state => ({ items: state.items, revision: state.revision, recent: state.recent }),
     },
   ),
 );

@@ -10,7 +10,7 @@ import { Button, Card, Chip, colours, StorageSelector, Stepper, styles as ui } f
 import { LOW_CONFIDENCE } from '../config';
 import { api } from '../data/api';
 import { daysUntil, EXPIRY_DISCLAIMER, estimateExpiry, isValidDate, todayString } from '../domain/expiry';
-import { DraftItem, draftFromDetection, draftToItem, duplicateOf, mergeDrafts, newId, rangeFor } from '../domain/inventory';
+import { DraftItem, draftFromDetection, draftToItem, duplicateOf, mergeDrafts, newId, rangeFor, RecentFood } from '../domain/inventory';
 import { minFor, quantityForUnit, stepFor } from '../domain/units';
 import type { RootStackParamList } from '../navigation/types';
 import { useInventoryStore } from '../store/inventoryStore';
@@ -75,6 +75,7 @@ export default function ConfirmationScreen() {
   const scan = useSessionStore(s => s.scan);
   const setScan = useSessionStore(s => s.setScan);
   const addItems = useInventoryStore(s => s.addItems);
+  const recent = useInventoryStore(s => s.recent);
 
   const [drafts, setDrafts] = useState<DraftItem[]>(() => {
     const fromScan = (scan?.items || []).map(draftFromDetection);
@@ -146,6 +147,30 @@ export default function ConfirmationScreen() {
     setFocusKey(next.key);
   };
 
+  /** One tap on a recently added food: fill the empty card (or add one) and look up its shelf life straight away. */
+  const addRecent = (food: RecentFood) => {
+    const blank = drafts.find(d => !d.name.trim());
+    const draft: DraftItem = {
+      ...(blank || emptyDraft()),
+      name: food.name,
+      canonicalId: food.canonicalId,
+      category: food.category,
+      quantity: food.quantity,
+      unit: food.unit,
+      storageLocation: food.storageLocation,
+      storageTouched: true,
+      ranges: null,
+    };
+    setDrafts(prev => (blank ? prev.map(d => (d.key === blank.key ? draft : d)) : [...prev, draft]));
+    setSuggestions(null);
+    Keyboard.dismiss();
+    markPending(draft.key, true);
+    void lookup(draft.key, food.name);
+  };
+
+  const listed = new Set(drafts.map(d => d.name.trim().toLowerCase()));
+  const recentToShow = manual ? recent.filter(food => !listed.has(food.name.toLowerCase())) : [];
+
   const save = async () => {
     lookupTimers.current.forEach(clearTimeout);
     setLookingUp([]);
@@ -198,6 +223,27 @@ export default function ConfirmationScreen() {
             ? 'Start typing a food and pick it from the list: its storage and shelf life fill in automatically.'
             : 'Check what was detected. Fix names, amounts and storage, and remove mistakes. Items with low confidence are highlighted.'}
         </Text>
+
+        {recentToShow.length > 0 && (
+          <View style={local.recent}>
+            <Text style={ui.label}>Recently added</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+              {recentToShow.map(food => (
+                <Pressable
+                  key={food.canonicalId || food.name}
+                  testID={`recent-${food.name}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${food.name} again`}
+                  onPress={() => addRecent(food)}
+                  style={local.recentChip}
+                >
+                  <Ionicons name="add" size={16} color={colours.primary} />
+                  <Text style={local.recentText}>{food.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {drafts.map(draft => {
           const low = draft.confidence !== undefined && draft.confidence < LOW_CONFIDENCE;
@@ -314,6 +360,9 @@ export default function ConfirmationScreen() {
 
 const local = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
+  recent: { marginTop: 4 },
+  recentChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colours.border, backgroundColor: '#fff' },
+  recentText: { color: colours.text, fontWeight: '600' },
   demo: { backgroundColor: '#ede9fe', borderColor: '#c4b5fd', marginBottom: 12 },
   demoText: { color: '#5b21b6', fontWeight: '600' },
   card: { marginTop: 12 },

@@ -5,7 +5,9 @@ import path from 'path';
 import { createApp } from './app';
 import { fromReferenceDoc, Taxonomy } from './domain/taxonomy';
 import { createLlmClients } from './services/llm';
+import { BASIC_RECIPES } from './data/basicRecipes';
 import { MealDbSource } from './services/mealdb';
+import { CombinedRecipeSource, DummyJsonSource, StaticRecipeSource } from './services/recipeSources';
 import { FirestoreRepository, MemoryRepository, UserDataRepository } from './services/repository';
 
 dotenv.config();
@@ -48,7 +50,12 @@ const main = async () => {
   const repository: UserDataRepository = firestore ? new FirestoreRepository(firestore) : new MemoryRepository();
   const llm = createLlmClients();
 
-  const recipes = new MealDbSource(process.env.MEALDB_BASE_URL || undefined);
+  // TheMealDB is the main catalogue; the built-in basics and DummyJSON add simpler and extra recipes.
+  const recipes = new CombinedRecipeSource([
+    { prefix: 'mealdb_', source: new MealDbSource(process.env.MEALDB_BASE_URL || undefined) },
+    { prefix: 'basic_', source: new StaticRecipeSource(BASIC_RECIPES), optional: true },
+    ...(process.env.DUMMYJSON_RECIPES === 'false' ? [] : [{ prefix: 'dummyjson_', source: new DummyJsonSource(), optional: true }]),
+  ]);
   const app = createApp({
     llm,
     recipes,
@@ -65,8 +72,8 @@ const main = async () => {
     console.log(`  vision: ${llm.vision?.name || 'not configured'} | text: ${llm.text?.name || 'not configured'}`);
     console.log(`  storage: ${firestore ? 'Firestore' : 'in-memory (data is lost on restart)'} | taxonomy: ${taxonomy.size} ingredients`);
     // Warm the recipe catalogue so the first recommendation is fast.
-    recipes.all()
-      .then(list => console.log(`  recipes: ${list.length} loaded from TheMealDB`))
+    recipes.counts()
+      .then(counts => console.log(`  recipes: ${Object.values(counts).reduce((a, b) => a + b, 0)} loaded (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')})`))
       .catch(error => console.warn('  recipes: catalogue not loaded yet, will search by ingredient:', (error as Error).message));
   });
 };

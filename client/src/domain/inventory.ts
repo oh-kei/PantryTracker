@@ -159,3 +159,24 @@ export const applyUsage = (inventory: InventoryItem[], usages: Usage[]): Invento
     const remaining = Math.round((item.quantity - used) * 100) / 100;
     return remaining > 0 ? [{ ...item, quantity: remaining }] : [];
   });
+
+/** A food the user has added before, offered as a one-tap shortcut in manual entry. */
+export type RecentFood = Pick<InventoryItem, 'name' | 'canonicalId' | 'category' | 'unit' | 'storageLocation' | 'quantity'>;
+
+export const MAX_RECENT = 12;
+
+const recentKey = (food: Pick<RecentFood, 'name' | 'canonicalId'>) =>
+  (food.canonicalId || food.name).trim().toLowerCase();
+
+/** Newest first, one entry per food, capped. */
+export const rememberRecent = (recent: RecentFood[], added: InventoryItem[], max = MAX_RECENT): RecentFood[] => {
+  const fresh = [...added].reverse().map(({ name, canonicalId, category, unit, storageLocation, quantity }) =>
+    ({ name, canonicalId, category, unit, storageLocation, quantity }));
+  const seen = new Set<string>();
+  return [...fresh, ...recent].filter(food => {
+    const key = recentKey(food);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, max);
+};
