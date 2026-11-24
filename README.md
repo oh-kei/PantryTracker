@@ -18,7 +18,7 @@ Core flow: **scan → confirm → track → cook**
 | 6.3 Ranking | `S = 0.5·coverage + 0.3·urgency + 0.2·preference`. Preference = favourite cuisines + cooking history. Every recipe is ranked, not only the ones a search returns: TheMealDB (about 790), DummyJSON (50, with photos) and 28 built-in basic recipes (scrambled eggs, egg fried rice, French toast…), cached for a day. If DummyJSON is down it's skipped. | `backend/src/domain/ranking.ts`, `services/{mealdb,recipeSources}.ts`, `data/basicRecipes.ts` |
 | 6.4 Missing-ingredient display | Match %, expiring chips, missing chips, servings, "why this recipe". Pantry staples are not counted. | `RecipeListScreen.tsx`, `RecipeDetailScreen.tsx` |
 | 6.5 Substitutions | Rules by culinary role (fat, acid, thickener, binder, protein base…). Items you already own are preferred. Gemini fills gaps, and its output is validated and allergen-checked. You accept or reject each one. | `backend/src/domain/substitution.ts` |
-| 6.6 LLM adaptation | Offered when no stored recipe covers ≥ 50% of the inventory. Before generating you choose which ingredients it may use (select all / deselect all / expiring soon only), star up to 5 it must use, and pick a meal type and time limit. Only names + urgency are sent. Strict JSON schema validation, then the same ranking. | `backend/src/domain/generatedRecipe.ts`, `client/src/screens/GenerateScreen.tsx` |
+| 6.6 LLM adaptation | Offered when no stored recipe covers ≥ 50% of the inventory. Before generating you choose which ingredients it may use (select all / deselect all / expiring soon only), star up to 5 it must use (the answer is checked, and the AI is asked once more if it skipped one), and pick a meal type and time limit. Only names + urgency are sent. Strict JSON schema validation, then the same ranking. | `backend/src/domain/generatedRecipe.ts`, `client/src/screens/GenerateScreen.tsx` |
 | 6.7 Inventory update | "I cooked this" lets you adjust how much of each item (and each accepted substitute) was used, then deducts it. | `RecipeDetailScreen.tsx`, `client/src/domain/inventory.ts` |
 | 7 UI | Home dashboard, scan & confirm, inventory grouped by storage with swipe to edit/use/delete, recipe list & detail with tickable steps, settings. | `client/src/screens/` |
 | 8 Privacy | Photos are never persisted. "Delete all my data" wipes the phone and the server. Each request is scoped to a user (Firebase ID token, or a per-install device ID in dev). | `backend/src/middleware/auth.ts` |
@@ -52,7 +52,7 @@ The inventory is **offline-first**. The phone's store is the source of truth, an
 cd backend
 npm install
 cp .env.example .env     # add OPENROUTER_API_KEY (or GEMINI_API_KEY)
-npm run dev              # http://localhost:4000/api/health
+npm run dev              # http://localhost:4000/api/health (restarts itself when src/ changes)
 ```
 
 Secrets go in `backend/.env` (not the repo root) and are gitignored:

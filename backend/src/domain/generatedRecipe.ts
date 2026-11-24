@@ -47,9 +47,13 @@ export const buildRecipePrompt = (
     options.mealType ? `a ${options.mealType} dish` : null,
     options.maxMinutes ? `ready in ${options.maxMinutes} minutes or less in total` : null,
   ].filter(Boolean).join(', ');
+  const must = inventory.filter(item => mustUse.has(item.id)).map(item => item.name);
   return `Inventory: ${JSON.stringify(items)}
 Constraints: ${JSON.stringify(constraints)}
-Create one recipe${request ? `: ${request}` : ''}.`;
+` +
+    (must.length ? `The recipe MUST be built around: ${must.join(', ')}.
+` : '') +
+    `Create one recipe${request ? `: ${request}` : ''}.`;
 };
 
 /** Read options from a request body, ignoring anything unexpected. */

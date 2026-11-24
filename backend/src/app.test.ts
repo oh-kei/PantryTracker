@@ -162,17 +162,39 @@ describe('recipes', () => {
     ];
     const res = await request(app).post('/api/recipes/generate').set(DEVICE).send({
       inventory: pantry,
-      options: { include: ['a'], mustUse: ['c', 'unknown'], mealType: 'breakfast', maxMinutes: 15, extra: 'ignored' },
+      options: { include: ['c'], mustUse: ['a', 'unknown'], mealType: 'breakfast', maxMinutes: 15, extra: 'ignored' },
     }).expect(200);
     const prompt = (text.generateJson as jest.Mock).mock.calls[0][1] as string;
-    expect(prompt).toContain('"name":"Avocado"');
-    expect(prompt).toContain('"name":"Chicken Breast","urgency":"URGENT","mustUse":true');
+    expect(prompt).toContain('"name":"Avocado","urgency":"URGENT","mustUse":true');
+    expect(prompt).toContain('"name":"Chicken Breast"');
     expect(prompt).not.toContain('Spinach');
     expect(prompt).toContain('a breakfast dish, ready in 15 minutes or less in total');
     // Scored against the whole pantry: spinach still counts as owned.
     expect(res.body.recipe.missingIngredients).toEqual(['Bread']);
 
     await request(app).post('/api/recipes/generate').set(DEVICE).send({ inventory: pantry, options: { include: [] } }).expect(400);
+  });
+
+  it('asks again when the AI ignores a must-use item, and gives up after the second miss', async () => {
+    const pantry = [
+      { id: 'y', name: 'Full Fat Yoghurt', expiryDate: addDays(TODAY, 2) },
+      { id: 'a', name: 'Avocado', expiryDate: addDays(TODAY, 1) },
+      { id: 'b', name: 'Spinach', expiryDate: addDays(TODAY, 9) },
+    ];
+    const withYoghurt = { ...RECORDED_GENERATED_RECIPE, ingredients: [...RECORDED_GENERATED_RECIPE.ingredients, { name: 'Full Fat Yoghurt', measure: '2 tbsp' }] };
+    const generateJson = jest.fn().mockResolvedValueOnce(RECORDED_GENERATED_RECIPE).mockResolvedValueOnce(withYoghurt);
+    const app = build({ llm: { vision: null, text: { name: 'fixture', generateJson } } });
+    const res = await request(app).post('/api/recipes/generate').set(DEVICE)
+      .send({ inventory: pantry, options: { mustUse: ['y'] } }).expect(200);
+    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateJson.mock.calls[0][1]).toContain('MUST be built around: Full Fat Yoghurt');
+    expect(generateJson.mock.calls[1][1]).toContain('left out Full Fat Yoghurt');
+    expect(res.body.recipe.ingredients.find((i: { name: string }) => i.name === 'Full Fat Yoghurt').inventoryItemId).toBe('y');
+
+    const stubborn = build({ llm: { vision: null, text: textFixture(RECORDED_GENERATED_RECIPE) } });
+    const fail = await request(stubborn).post('/api/recipes/generate').set(DEVICE)
+      .send({ inventory: pantry, options: { mustUse: ['y'] } }).expect(502);
+    expect(fail.body.error).toMatch(/didn't use Full Fat Yoghurt/);
   });
 
   it('rejects invalid generated recipes', async () => {

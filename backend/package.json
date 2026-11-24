@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts",
+    "dev": "node --watch-path=src --require ts-node/register src/server.ts",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "jest",
     "seed": "node scripts/seed.mjs",

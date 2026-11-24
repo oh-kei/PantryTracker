@@ -303,23 +303,43 @@ export const createApp = (deps: AppDeps) => {
     if (!llm.text) throw new HttpError(503, 'Recipe generation is not configured');
     inventory.forEach(item => { if (!item.canonicalId) item.canonicalId = taxonomy.canonicalIdFor(item.name); });
 
-    let raw: unknown;
-    try {
-      raw = await llm.text.generateJson(RECIPE_SYSTEM_PROMPT, buildRecipePrompt(inventory, preferences, date, options));
-    } catch (error) {
-      console.warn('Recipe generation failed:', (error as Error).message);
-      throw new HttpError(503, 'The AI recipe service is busy right now. Try again in a minute.');
+    const text = llm.text;
+    const prompt = buildRecipePrompt(inventory, preferences, date, options);
+    const attempt = async (extra = '') => {
+      let raw: unknown;
+      try {
+        raw = await text.generateJson(RECIPE_SYSTEM_PROMPT, prompt + extra);
+      } catch (error) {
+        console.warn('Recipe generation failed:', (error as Error).message);
+        throw new HttpError(503, 'The AI recipe service is busy right now. Try again in a minute.');
+      }
+      let candidate: RecipeCandidate;
+      try {
+        candidate = validateGeneratedRecipe(raw, `generated_${Date.now()}`);
+      } catch (error) {
+        throw new HttpError(502, `Generated recipe was rejected: ${(error as Error).message}. Try again.`);
+      }
+      if (!isRecipeFeasible(candidate.ingredients.map(i => i.name), preferences)) {
+        throw new HttpError(502, 'Generated recipe conflicted with your dietary constraints; try again');
+      }
+      const recipe = scoreRecipe(candidate, inventory, preferences, taxonomy, date, weights);
+      // Must-use items count only if the recipe really uses them (same matching as "You have it").
+      const used = new Set(recipe.ingredients.map(i => i.inventoryItemId).filter(Boolean));
+      const skipped = inventory.filter(item => options.mustUse?.includes(item.id) && !used.has(item.id)).map(item => item.name);
+      return { recipe, skipped };
+    };
+
+    let { recipe, skipped } = await attempt();
+    if (skipped.length > 0) {
+      // Free models sometimes ignore the instruction: ask once more, saying what was left out.
+      ({ recipe, skipped } = await attempt(`
+Your previous answer "${recipe.title}" left out ${skipped.join(', ')}. ` +
+        'Every item marked mustUse MUST appear in the ingredients list by that name.'));
     }
-    let candidate: RecipeCandidate;
-    try {
-      candidate = validateGeneratedRecipe(raw, `generated_${Date.now()}`);
-    } catch (error) {
-      throw new HttpError(502, `Generated recipe was rejected: ${(error as Error).message}. Try again.`);
+    if (skipped.length > 0) {
+      throw new HttpError(502, `The AI didn't use ${skipped.join(', ')} even when asked twice. Try again, or unstar it.`);
     }
-    if (!isRecipeFeasible(candidate.ingredients.map(i => i.name), preferences)) {
-      throw new HttpError(502, 'Generated recipe conflicted with your dietary constraints; try again');
-    }
-    res.json({ success: true, recipe: scoreRecipe(candidate, inventory, preferences, taxonomy, date, weights) });
+    res.json({ success: true, recipe });
   }));
 
   /** Substitutions for missing ingredients by culinary role (section 6.5). */
