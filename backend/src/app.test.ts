@@ -77,6 +77,11 @@ describe('POST /api/scan', () => {
     expect(kefir.shelfLife).toMatchObject({ source: 'ai-estimate', ranges: { fridge: { min: 7, max: 14 } } });
   });
 
+  it('suggests ingredient names with shelf-life data', async () => {
+    const res = await request(build()).get('/api/ingredients?q=spin').set(DEVICE).expect(200);
+    expect(res.body.items[0]).toMatchObject({ name: 'Spinach', defaultStorage: 'FRIDGE', ranges: { fridge: { min: 3, max: 7 } } });
+  });
+
   it('validates the upload', async () => {
     const app = build();
     await request(app).post('/api/scan').set(DEVICE).send({}).expect(400);

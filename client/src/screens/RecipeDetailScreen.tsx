@@ -4,6 +4,7 @@ import React, { useLayoutEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { IngredientStatus, Substitution } from '../../../shared/types';
 import { Button, Card, Chip, colours, EmptyState, SectionTitle, Stepper, styles as ui } from '../components/ui';
+import { stepFor } from '../domain/units';
 import { plannedUsage, Usage } from '../domain/inventory';
 import { useSubstitutions } from '../hooks/useRecipes';
 import type { RootStackParamList } from '../navigation/types';
@@ -175,7 +176,7 @@ export default function RecipeDetailScreen() {
                   <Stepper
                     value={usage.amount}
                     min={0}
-                    step={item.quantity % 1 === 0 ? 1 : 0.5}
+                    step={item.quantity % 1 === 0 ? stepFor(item.unit) : 0.5}
                     onChange={amount => setUsages(prev => (prev || []).map(u => (u.itemId === usage.itemId ? { ...u, amount: Math.min(amount, item.quantity) } : u)))}
                   />
                   <Pressable onPress={() => setUsages(prev => (prev || []).map(u => (u.itemId === usage.itemId ? { ...u, amount: item.quantity } : u)))} style={{ marginLeft: 8 }}>

@@ -263,6 +263,32 @@ export class Taxonomy {
     return undefined;
   }
 
+  /**
+   * Type-ahead suggestions for manual entry: names starting with the query first,
+   * then names with a word starting with it, then aliases. One entry per food name.
+   */
+  search(query: string, limit = 8): TaxonomyEntry[] {
+    const q = cleanText(query).toLowerCase().trim();
+    if (q.length < 2) return [];
+    const scored: Array<{ entry: TaxonomyEntry; score: number }> = [];
+    const seen = new Set<string>();
+    // Every entry, not byName: "Whole Milk" and "Milk" normalise to the same key but are both worth offering.
+    for (const entry of [...this.byId.values()].reverse()) {
+      const name = entry.name.toLowerCase();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const score = name === q ? 0
+        : name.startsWith(q) ? 1
+          : name.split(/\s+/).some(word => word.startsWith(q)) ? 2
+            : (entry.aliases || []).some(alias => alias.toLowerCase().startsWith(q)) ? 3 : -1;
+      if (score >= 0) scored.push({ entry, score });
+    }
+    return scored
+      .sort((a, b) => a.score - b.score || a.entry.name.length - b.entry.name.length || a.entry.name.localeCompare(b.entry.name))
+      .slice(0, limit)
+      .map(s => s.entry);
+  }
+
   /** Canonical ID for any label; unknown labels get a deterministic snake_case ID. */
   canonicalIdFor(label: string): string {
     return this.lookup(label)?.canonicalId || toCanonicalId(label);

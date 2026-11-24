@@ -67,6 +67,18 @@ describe('taxonomy', () => {
     expect(t.lookup('dried fruit')?.name).toBe('Dried Fruit');
   });
 
+  it('suggests foods as the user types, best matches first', () => {
+    expect(taxonomy.search('a')).toEqual([]);
+    const names = taxonomy.search('chick').map(e => e.name);
+    expect(names[0]).toBe('Chickpeas');
+    expect(names).toEqual(expect.arrayContaining(['Chicken Breast', 'Chicken Thigh']));
+    expect(taxonomy.search('mince').map(e => e.name)).toEqual(expect.arrayContaining(['Beef Mince', 'Pork Mince']));
+    expect(taxonomy.search('zucch').map(e => e.name)).toEqual(['Courgette']); // via alias
+    const withWholeMilk = new Taxonomy();
+    withWholeMilk.add({ canonicalId: 'whole_milk', name: 'Whole Milk', category: 'Dairy & Eggs', defaultStorage: 'FRIDGE', aliases: [], shelfLifeDays: { pantry: null, fridge: { min: 5, max: 7 }, freezer: null } });
+    expect(withWholeMilk.search('mil').map(e => e.name).slice(0, 2)).toEqual(['Milk', 'Whole Milk']);
+  });
+
   it('falls back to category ranges for unknown items', () => {
     const estimate = taxonomy.estimate('kefir', 'Dairy & Eggs');
     expect(estimate.source).toBe('category-fallback');

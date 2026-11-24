@@ -1,14 +1,20 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
 import type { InventoryItem } from '../../../../shared/types';
 import { addDays, todayString } from '../../domain/expiry';
 import { useInventoryStore } from '../../store/inventoryStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { api } from '../../data/api';
 import ConfirmationScreen from '../ConfirmationScreen';
 import InventoryScreen from '../InventoryScreen';
+
+jest.mock('../../data/api', () => ({
+  api: { shelfLife: jest.fn(), suggestIngredients: jest.fn() },
+}));
+const mockApi = api as unknown as { shelfLife: jest.Mock; suggestIngredients: jest.Mock };
 
 const today = todayString();
 const Stack = createNativeStackNavigator();
@@ -113,5 +119,41 @@ describe('ConfirmationScreen', () => {
     const saved = useInventoryStore.getState().items;
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({ name: 'Spinach', canonicalId: 'spinach', unit: 'bag', expiryDate: addDays(today, 7), expiryEarliest: addDays(today, 3) });
+  });
+});
+
+describe('ConfirmationScreen manual entry', () => {
+  const chicken = {
+    canonicalId: 'chicken_breast', name: 'Chicken Breast', category: 'Meat & Seafood' as const, defaultStorage: 'FRIDGE' as const,
+    source: 'reference' as const, ranges: { pantry: null, fridge: { min: 1, max: 2 }, freezer: { min: 270, max: 270 } },
+  };
+  beforeEach(() => {
+    mockApi.shelfLife.mockReset().mockResolvedValue(chicken);
+    mockApi.suggestIngredients.mockReset().mockResolvedValue({ items: [chicken] });
+  });
+
+  it('uses the food-specific shelf life even when Save is tapped straight after typing', async () => {
+    await renderScreen(ConfirmationScreen, { manual: true });
+    await fireEvent.changeText(screen.getByPlaceholderText('Food name, e.g. spinach'), 'chicken breast');
+    await fireEvent.press(screen.getByTestId('confirm-save'));
+    await waitFor(() => expect(useInventoryStore.getState().items).toHaveLength(1));
+    expect(mockApi.shelfLife).toHaveBeenCalledWith('chicken breast');
+    expect(useInventoryStore.getState().items[0]).toMatchObject({
+      canonicalId: 'chicken_breast', expiryEarliest: addDays(today, 1), expiryDate: addDays(today, 2),
+    });
+  });
+
+  it('suggests foods while typing, and offers to merge duplicates instead of a checkbox', async () => {
+    await renderScreen(ConfirmationScreen, { manual: true });
+    await fireEvent.changeText(screen.getByPlaceholderText('Food name, e.g. spinach'), 'chick');
+    await fireEvent.press(await screen.findByText('Chicken Breast', {}, { timeout: 2000 }));
+    expect(screen.getByText(/Estimated expiry/)).toBeTruthy();
+    expect(screen.queryByLabelText(/to merge/)).toBeNull();
+
+    await fireEvent.press(screen.getByText('Add another item'));
+    const inputs = screen.getAllByPlaceholderText('Food name, e.g. spinach');
+    await fireEvent.changeText(inputs[1], 'Chicken Breast');
+    await fireEvent.press(await screen.findByText('Merge'));
+    expect(screen.getAllByPlaceholderText('Food name, e.g. spinach')).toHaveLength(1);
   });
 });

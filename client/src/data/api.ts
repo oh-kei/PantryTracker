@@ -91,6 +91,10 @@ export const api = {
   scan: (imageBase64: string, mimeType = 'image/jpeg') =>
     post<ScanResponse>('/scan', { imageBase64, mimeType }, 45_000),
 
+  /** Type-ahead food names from the shelf-life table. */
+  suggestIngredients: (query: string) =>
+    request<{ items: ShelfLifeEstimate[] }>(`/ingredients?q=${encodeURIComponent(query)}`, { timeoutMs: 5000 }),
+
   shelfLife: (ingredient: string, storage?: StorageLocation) =>
     request<ShelfLifeEstimate & { storage: StorageLocation; expiry: { earliest: string; latest: string } | null }>(
       `/shelf-life?ingredient=${encodeURIComponent(ingredient)}${storage ? `&storage=${storage}` : ''}`,

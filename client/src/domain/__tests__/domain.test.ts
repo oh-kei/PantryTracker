@@ -1,7 +1,8 @@
 import { resolveApiBaseUrl } from '../../config';
 import type { InventoryItem, RankedRecipe } from '../../../../shared/types';
 import { addDays, dateToString, daysUntil, describeExpiry, isValidDate, relativeDays, stringToLocalDate, urgencyOf } from '../expiry';
-import { applyUsage, DraftItem, draftFromDetection, draftToItem, groupByStorage, mergeDrafts, plannedUsage } from '../inventory';
+import { quantityForUnit, stepFor } from '../units';
+import { applyUsage, DraftItem, draftFromDetection, draftToItem, duplicateOf, groupByStorage, mergeDrafts, plannedUsage } from '../inventory';
 
 const TODAY = '2026-11-15';
 
@@ -121,5 +122,30 @@ describe('backend address', () => {
     expect(resolveApiBaseUrl('https://api.example.com/api/', '10.0.0.4:8081')).toBe('https://api.example.com/api');
     expect(resolveApiBaseUrl('http://10.89.180.23:4000/api', 'abc-anonymous-8081.exp.direct')).toBe('http://10.89.180.23:4000/api');
     expect(resolveApiBaseUrl(undefined, undefined)).toBe('http://10.0.2.2:4000/api');
+  });
+});
+
+describe('units and duplicates', () => {
+  it('steps and converts sensibly per unit', () => {
+    expect(stepFor('unit')).toBe(1);
+    expect(stepFor('g')).toBe(50);
+    expect(stepFor('L')).toBe(0.5);
+    expect(quantityForUnit(2, 'unit', 'g')).toBe(250);
+    expect(quantityForUnit(2, 'unit', 'pack')).toBe(2);
+    expect(quantityForUnit(500, 'g', 'unit')).toBe(500);
+    expect(quantityForUnit(1.5, 'kg', 'bag')).toBe(2);
+  });
+
+  it('finds an earlier draft for the same food', () => {
+    const base = { category: 'Other' as const, quantity: 1, unit: 'unit', storageLocation: 'FRIDGE' as const, ranges: null };
+    const drafts: DraftItem[] = [
+      { ...base, key: 'a', name: 'Milk', canonicalId: 'milk' },
+      { ...base, key: 'b', name: 'Eggs', canonicalId: 'egg' },
+      { ...base, key: 'c', name: 'Whole milk', canonicalId: 'milk' },
+      { ...base, key: 'd', name: ' eggs ', canonicalId: '' },
+    ];
+    expect(duplicateOf(drafts, drafts[0])).toBeUndefined();
+    expect(duplicateOf(drafts, drafts[2])?.key).toBe('a');
+    expect(duplicateOf(drafts, drafts[3])).toBeUndefined(); // no ID yet, so only an identical name would count
   });
 });

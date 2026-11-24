@@ -6,6 +6,7 @@ import type {
   RecipeInventoryItem,
   RecommendResponse,
   ScanResponse,
+  ShelfLifeEstimate,
   StorageLocation,
   SubstitutionResponse,
   UserPreferences,
@@ -160,6 +161,20 @@ export const createApp = (deps: AppDeps) => {
       expiry: range ? expiryWindow(buyDate, range) : null,
     });
   }));
+
+  /** Type-ahead food names for manual entry, each with its shelf-life data. */
+  app.get('/api/ingredients', (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 60) : '';
+    const items: ShelfLifeEstimate[] = taxonomy.search(q).map(entry => ({
+      canonicalId: entry.canonicalId,
+      name: entry.name,
+      category: entry.category,
+      defaultStorage: entry.defaultStorage,
+      ranges: entry.shelfLifeDays,
+      source: 'reference',
+    }));
+    res.json({ success: true, items });
+  });
 
   /**
    * Photo recognition (section 4). The image only lives in memory for the duration

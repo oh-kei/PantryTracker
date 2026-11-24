@@ -10,6 +10,7 @@ import type {
   Substitution,
 } from '../../../shared/types';
 import { estimateExpiry, todayString } from './expiry';
+import { isMeasured } from './units';
 
 export const STORAGE_LABELS: Record<StorageLocation, string> = {
   FRIDGE: 'Fridge',
@@ -55,6 +56,8 @@ export interface DraftItem {
   /** labelDate was read off the packaging by the AI and should be checked. */
   labelFromPhoto?: boolean;
   ripeness?: Ripeness;
+  /** The user picked the storage location, so a name lookup must not change it. */
+  storageTouched?: boolean;
   /** Where the shelf-life ranges came from (table, AI estimate or generic category). */
   estimateSource?: ShelfLifeEstimate['source'];
 }
@@ -74,6 +77,17 @@ export const draftFromDetection = (d: DetectedItem): DraftItem => ({
   ...(d.printedDate ? { labelDate: d.printedDate, labelFromPhoto: true } : {}),
   ...(d.ripeness ? { ripeness: d.ripeness } : {}),
 });
+
+/** Same food listed twice? Compares canonical IDs, or names when an ID isn't known yet. */
+const draftIdentity = (d: DraftItem): string => d.canonicalId || d.name.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** The earlier draft this one duplicates, if any (offered as a one-tap merge). */
+export const duplicateOf = (drafts: DraftItem[], draft: DraftItem): DraftItem | undefined => {
+  if (!draft.name.trim()) return undefined;
+  const id = draftIdentity(draft);
+  const index = drafts.findIndex(d => d.key === draft.key);
+  return drafts.slice(0, Math.max(0, index)).find(d => d.name.trim() && draftIdentity(d) === id);
+};
 
 /** Merge drafts into the first one, summing quantities (e.g. two "egg" detections). */
 export const mergeDrafts = (drafts: DraftItem[], keys: string[]): DraftItem[] => {
@@ -133,7 +147,8 @@ export const plannedUsage = (
   return [...new Set(ids)]
     .map(id => inventory.find(item => item.id === id))
     .filter((item): item is InventoryItem => Boolean(item))
-    .map(item => ({ itemId: item.id, amount: Math.min(1, item.quantity) || item.quantity }));
+    // Counted items: one by default. Weights and volumes: all of it (the user adjusts before confirming).
+    .map(item => ({ itemId: item.id, amount: isMeasured(item.unit) ? item.quantity : Math.min(1, item.quantity) || item.quantity }));
 };
 
 /** Deduct usages from the inventory (section 6.7); items that reach zero are removed. */

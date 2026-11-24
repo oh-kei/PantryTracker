@@ -5,6 +5,8 @@ import { Alert, Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, Tex
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import type { InventoryItem, StorageLocation } from '../../../shared/types';
 import { ExpiryDateField } from '../components/ExpiryDateField';
+import { UnitPicker } from '../components/UnitPicker';
+import { minFor, quantityForUnit, stepFor } from '../domain/units';
 import { Button, Chip, colours, EmptyState, StorageSelector, Stepper, styles as ui, UrgencyBadge } from '../components/ui';
 import { api } from '../data/api';
 import { EXPIRY_DISCLAIMER, estimateExpiry, isValidDate, todayString, urgencyOf } from '../domain/expiry';
@@ -100,10 +102,10 @@ const EditModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
           <Text style={local.sheetTitle}>Edit item</Text>
           <Text style={ui.label}>Name</Text>
           <TextInput style={ui.input} value={name} onChangeText={setName} />
-          <Text style={ui.label}>Quantity</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Stepper value={quantity} min={0.5} step={item.quantity % 1 === 0 ? 1 : 0.5} onChange={setQuantity} />
-            <TextInput style={[ui.input, { flex: 1, marginLeft: 8 }]} value={unit} onChangeText={setUnit} />
+          <Text style={ui.label}>Amount</Text>
+          <Stepper value={quantity} min={Math.min(minFor(unit), 0.5)} step={item.quantity % 1 === 0 ? stepFor(unit) : 0.5} onChange={setQuantity} />
+          <View style={{ marginTop: 8 }}>
+            <UnitPicker value={unit} onChange={next => { setQuantity(q => quantityForUnit(q, unit, next)); setUnit(next); }} />
           </View>
           <Text style={ui.label}>Storage</Text>
           <StorageSelector value={storage} onChange={setStorage} />
