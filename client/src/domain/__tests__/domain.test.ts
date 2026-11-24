@@ -1,6 +1,6 @@
 import { resolveApiBaseUrl } from '../../config';
 import type { InventoryItem, RankedRecipe } from '../../../../shared/types';
-import { addDays, dateToString, daysUntil, describeExpiry, isValidDate, relativeDays, stringToLocalDate, urgencyOf } from '../expiry';
+import { addDays, dateToString, daysUntil, describeExpiry, describeShelfLife, formatShortDate, isValidDate, relativeDays, stringToLocalDate, urgencyOf } from '../expiry';
 import { quantityForUnit, stepFor } from '../units';
 import { applyUsage, DraftItem, draftFromDetection, draftToItem, duplicateOf, groupByStorage, mergeDrafts, MAX_RECENT, plannedUsage, rememberRecent } from '../inventory';
 
@@ -163,5 +163,20 @@ describe('recently added foods', () => {
     recent = rememberRecent(recent, Array.from({ length: 20 }, (_, i) => food(`Food ${i}`)));
     expect(recent).toHaveLength(MAX_RECENT);
     expect(recent[0].name).toBe('Food 19');
+  });
+});
+
+describe('expiry wording', () => {
+  it('shows the year for dates in another year, so long ranges never read backwards', () => {
+    expect(formatShortDate('2027-11-24', '2026-11-24')).toMatch(/2027/);
+    expect(formatShortDate('2026-12-01', '2026-11-24')).not.toMatch(/2026/);
+  });
+  it('describes shelf life in words', () => {
+    expect(describeShelfLife(365, 730)).toBe('1–2 years');
+    expect(describeShelfLife(3, 5)).toBe('3–5 days');
+    expect(describeShelfLife(14, 21)).toBe('2–3 weeks');
+    expect(describeShelfLife(270, 270)).toBe('about 9 months');
+    expect(describeShelfLife(1, 1)).toBe('about 1 day');
+    expect(describeShelfLife(5, 60)).toBe('5 days – 2 months');
   });
 });

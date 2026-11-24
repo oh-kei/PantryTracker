@@ -9,7 +9,7 @@ import { UnitPicker } from '../components/UnitPicker';
 import { Button, Card, Chip, colours, StorageSelector, Stepper, styles as ui } from '../components/ui';
 import { LOW_CONFIDENCE } from '../config';
 import { api } from '../data/api';
-import { daysUntil, EXPIRY_DISCLAIMER, estimateExpiry, isValidDate, todayString } from '../domain/expiry';
+import { daysUntil, describeShelfLife, EXPIRY_DISCLAIMER, estimateExpiry, formatShortDate, isValidDate, todayString } from '../domain/expiry';
 import { DraftItem, draftFromDetection, draftToItem, duplicateOf, mergeDrafts, newId, rangeFor, RecentFood } from '../domain/inventory';
 import { minFor, quantityForUnit, stepFor } from '../domain/units';
 import type { RootStackParamList } from '../navigation/types';
@@ -20,8 +20,7 @@ import { useSessionStore } from '../store/sessionStore';
 const SUGGEST_DELAY_MS = 250;
 const LOOKUP_DELAY_MS = 600;
 
-const formatShort = (date: string) =>
-  new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const formatShort = (date: string) => formatShortDate(date);
 
 const emptyDraft = (storageLocation: DraftItem['storageLocation'] = 'FRIDGE'): DraftItem => ({
   key: newId('draft'),
@@ -60,6 +59,7 @@ const ExpiryPreview = ({ draft, pending }: { draft: DraftItem; pending: boolean 
   return (
     <Text style={local.expiry}>
       Estimated expiry: {formatShort(window.earliest)} – {formatShort(window.latest)}
+      {range ? ` (${describeShelfLife(range.min, range.max)})` : ''}
       {!draft.ranges || draft.estimateSource === 'category-fallback' ? ' (generic estimate for this type of food)' : ''}
       {draft.estimateSource === 'ai-estimate' ? ' (AI estimate: not in our shelf-life table)' : ''}
       {draft.ripeness === 'overripe' ? ' · shortened because it looks overripe' : ''}

@@ -71,4 +71,17 @@ describe('ShelfLifeService', () => {
     expect((await new ShelfLifeService(new Taxonomy(), slow, 20).estimate('kefir')).source).toBe('category-fallback');
     expect((await new ShelfLifeService(new Taxonomy(), null).estimate('kefir')).source).toBe('category-fallback');
   });
+
+  it('keeps a slow AI answer for next time instead of throwing it away', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let answer: (value: unknown) => void = () => undefined;
+    const client: TextClient = { name: 'x', generateJson: jest.fn(() => new Promise(resolve => { answer = resolve; })) };
+    const service = new ShelfLifeService(new Taxonomy(), client, 20);
+    expect((await service.estimate('kefir')).source).toBe('category-fallback');
+    expect((await service.estimate('kefir')).source).toBe('category-fallback'); // still running: no second request
+    answer(KEFIR);
+    await new Promise(resolve => setImmediate(resolve));
+    expect((await service.estimate('kefir')).source).toBe('ai-estimate');
+    expect(client.generateJson).toHaveBeenCalledTimes(1);
+  });
 });

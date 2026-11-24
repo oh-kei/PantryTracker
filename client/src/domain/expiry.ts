@@ -90,3 +90,21 @@ export const stringToLocalDate = (value: string): Date => {
   const [y, m, d] = value.split('-').map(Number);
   return new Date(y, m - 1, d, 12);
 };
+
+/** "25 Nov", or "25 Nov 2027" when it isn't this year (so a 1-2 year range never reads backwards). */
+export const formatShortDate = (date: string, today: string = todayString()): string =>
+  new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    day: 'numeric', month: 'short', timeZone: 'UTC', ...(date.slice(0, 4) !== today.slice(0, 4) ? { year: 'numeric' } : {}),
+  });
+
+const spanUnit = (days: number): [number, string] =>
+  days >= 330 ? [Math.round(days / 365), 'year'] : days >= 60 ? [Math.round(days / 30), 'month'] : days >= 14 ? [Math.round(days / 7), 'week'] : [days, 'day'];
+
+/** A shelf-life range in words: "3–5 days", "2–3 weeks", "1–2 years", "about 6 months". */
+export const describeShelfLife = (min: number, max: number): string => {
+  const [lo, loUnit] = spanUnit(min);
+  const [hi, hiUnit] = spanUnit(max);
+  const plural = (n: number, unit: string) => `${unit}${n === 1 ? '' : 's'}`;
+  if (loUnit === hiUnit) return lo === hi ? `about ${hi} ${plural(hi, hiUnit)}` : `${lo}–${hi} ${plural(hi, hiUnit)}`;
+  return `${lo} ${plural(lo, loUnit)} – ${hi} ${plural(hi, hiUnit)}`;
+};

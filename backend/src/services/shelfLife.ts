@@ -20,7 +20,8 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
  */
 export class ShelfLifeService {
   private readonly cache = new Map<string, ShelfLifeEstimate>();
-  private readonly pending = new Map<string, Promise<ShelfLifeEstimate>>();
+  /** AI requests still running, shared by everyone asking about the same food. */
+  private readonly pending = new Map<string, Promise<ShelfLifeEstimate | null>>();
 
   constructor(
     private readonly taxonomy: Taxonomy,
@@ -35,19 +36,27 @@ export class ShelfLifeService {
     const key = normaliseIngredient(label) || label.trim().toLowerCase();
     const cached = this.cache.get(key);
     if (cached) return cached;
-    let pending = this.pending.get(key);
-    if (!pending) {
-      pending = this.ask(key, label, base).finally(() => this.pending.delete(key));
-      this.pending.set(key, pending);
+    let full = this.pending.get(key);
+    if (!full) {
+      full = this.fetchEstimate(key, label).finally(() => this.pending.delete(key));
+      this.pending.set(key, full);
     }
-    return pending;
+    // Wait a while for the AI. If it's slower, answer with the generic range now:
+    // the request keeps running and caches its answer, so the next lookup of this
+    // food (e.g. when the user taps Save) gets the real estimate.
+    try {
+      return (await withTimeout(full, this.timeoutMs)) ?? base;
+    } catch (error) {
+      console.warn(`AI shelf-life estimate for "${label.slice(0, 40)}" is slow (${(error as Error).message}); using the generic range until it arrives.`);
+      return base;
+    }
   }
 
-  private async ask(key: string, label: string, base: ShelfLifeEstimate): Promise<ShelfLifeEstimate> {
+  private async fetchEstimate(key: string, label: string): Promise<ShelfLifeEstimate | null> {
     try {
-      const raw = await withTimeout((this.text as TextClient).generateJson(SHELF_LIFE_SYSTEM_PROMPT, label.slice(0, 80)), this.timeoutMs);
+      const raw = await (this.text as TextClient).generateJson(SHELF_LIFE_SYSTEM_PROMPT, label.slice(0, 80));
       const entry = validateAiShelfLife(raw, label);
-      if (!entry) return base;
+      if (!entry) return null;
       const estimate: ShelfLifeEstimate = {
         canonicalId: entry.canonicalId,
         name: entry.name,
@@ -61,7 +70,7 @@ export class ShelfLifeService {
       return estimate;
     } catch (error) {
       console.warn(`AI shelf-life estimate failed for "${label.slice(0, 40)}":`, (error as Error).message);
-      return base;
+      return null;
     }
   }
 }
