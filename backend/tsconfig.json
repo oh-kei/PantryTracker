@@ -2,12 +2,14 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
-    "rootDir": "./",
+    "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node", "jest"]
   },
-  "include": ["server.ts"]
+  "include": ["src/**/*.ts", "../shared/*.d.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/__fixtures__/**"]
 }
